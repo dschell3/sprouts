@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sprouts</title>
+<style>
+  /* Garden theme. Layout: board card on the left, panel on the right; stacks to one column on phones */
+  :root {
+    --bg: #eef2e6;
+    --card: #fbfcf7;
+    --ink: #23301f;
+    --muted: #5f6e57;
+    --line: #d5dfca;
+    --bed: #efe5d3;
+    --speck: #ddcdb2;
+    --frame: #a47c55;
+    --p1: #2e7d4f;
+    --p2: #c0622b;
+    --seed: #6f4e33;
+    --pip: #9be07a;
+    --wilt: #c3b8a6;
+    --bad: #c23b2e;
+    --hint: #e0a100;
+    --btn-bg: #ffffff;
+    --solid: #23301f;
+    --solid-ink: #ffffff;
+    --ring: #fbfcf7;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151b13; --card: #1f271c; --ink: #e7eedf; --muted: #a3b298; --line: #33402e;
+      --bed: #2c2519; --speck: #3b3223; --frame: #7a5a3c;
+      --p1: #5cc08a; --p2: #ec8a52; --seed: #d2a676; --pip: #2d6a2e; --wilt: #5e574c;
+      --bad: #ff6b5b; --hint: #ffc83d; --btn-bg: #283224; --solid: #e7eedf; --solid-ink: #151b13;
+      --ring: #1f271c;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  .wrap {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding-block: 16px 28px;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+  header { text-align: center; padding-block: 4px 12px; }
+  h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; display: inline-flex; align-items: center; gap: 8px; }
+  h1 svg { width: 30px; height: 30px; }
+  .sub { margin: 6px auto 0; color: var(--muted); max-width: 560px; text-wrap: balance; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 840px) { main { grid-template-columns: 1fr; } }
+  aside { display: grid; gap: 14px; min-width: 0; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    min-width: 0;
+  }
+  @media (max-width: 520px) { .board-card { padding: 10px; } }
+  h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
+
+  .status { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .turn { display: flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: 700; }
+  .chip { width: 18px; height: 18px; border-radius: 50%; flex: none; }
+  .count { color: var(--muted); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+
+  #svg {
+    width: 100%; height: auto; display: block;
+    max-height: 72vh;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    cursor: crosshair;
+  }
+  .frame { fill: var(--frame); }
+  .bed { fill: var(--bed); }
+  .speck { fill: var(--speck); }
+  .vine { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+  .vine-hi { fill: none; stroke: #ffffff; stroke-opacity: .3; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+  .stroke { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+  .stroke.bad { stroke: var(--bad) !important; stroke-dasharray: 6 5; opacity: .95; }
+  .seed-body { fill: var(--seed); stroke: var(--ring); stroke-width: 2.5; }
+  .wilt .seed-body { fill: var(--wilt); }
+  .pip { fill: var(--pip); }
+  .ring { fill: none; stroke-width: 3; stroke-dasharray: 4 4; }
+  .hintring { fill: none; stroke: var(--hint); stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  .pop { animation: pop .5s cubic-bezier(.3,1.6,.6,1); transform-box: fill-box; transform-origin: center; }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  @keyframes pulse { 0%,100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.25); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .hintring, .pop { animation: none; } }
+
+  .msg { color: var(--muted); font-size: 0.92rem; margin: 8px 0 0; text-align: center; min-height: 1.4em; }
+  .msg.bad { color: var(--bad); font-weight: 600; }
+  .win {
+    margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    background: var(--btn-bg); border: 2px solid currentColor; font-weight: 600;
+  }
+  .win p { margin: 4px 0 0; font-weight: 400; color: var(--ink); font-size: 0.93rem; }
+
+  .controls { display: flex; gap: 8px; margin-top: 12px; }
+  .controls .btn { flex: 1; }
+  .btn {
+    font: inherit; font-weight: 700; border-radius: 10px; padding: 12px 10px; min-height: 46px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--btn-bg); color: var(--ink);
+  }
+  .btn.solid { background: var(--solid); color: var(--solid-ink); border-color: var(--solid); }
+  .btn[hidden] { display: none; }
+  .btn:focus-visible, .pill:focus-visible { outline: 3px solid var(--p1); outline-offset: 2px; }
+
+  .row { margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .row-label { color: var(--muted); font-size: 0.88rem; margin: 0 0 6px; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    border: 1px solid var(--line); background: var(--btn-bg); color: var(--ink);
+    padding: 7px 13px; min-height: 38px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .pill[aria-pressed="true"] { background: var(--solid); color: var(--solid-ink); border-color: var(--solid); }
+  .pill:disabled { opacity: .45; cursor: not-allowed; }
+  .pill small { font-weight: 400; }
+  .note { color: var(--muted); font-size: 0.82rem; margin: 6px 0 0; }
+
+  ol#log { margin: 0; padding-left: 26px; max-height: 190px; overflow-y: auto; font-size: 0.93rem; }
+  ol#log li { margin: 2px 0; }
+  .muted { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: center; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  tr.current td { font-weight: 700; }
+
+  details summary { cursor: pointer; font-weight: 600; }
+  details ol, details ul { padding-left: 20px; margin: 8px 0 0; font-size: 0.93rem; }
+  details li { margin: 3px 0; }
+  details + details { margin-top: 10px; }
+  footer { text-align: center; color: var(--muted); font-size: 0.82rem; padding-top: 16px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 30 V15" stroke="var(--p1)" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <path d="M16 17 C 9 17 5 12 5 6 C 12 6 16 10 16 17 Z" fill="var(--p1)"/>
+        <path d="M16 14 C 22 14 27 10 27 4 C 20 4 16 8 16 14 Z" fill="var(--pip)" stroke="var(--p1)" stroke-width="1.5"/>
+      </svg>
+      Sprouts
+    </h1>
+    <p class="sub">Grow vines between seeds. Every vine sprouts a new seed. If you can't grow a vine on your turn, you lose.</p>
+  </header>
+
+  <main>
+    <section class="card board-card" aria-label="Garden">
+      <div class="status">
+        <div class="turn" id="turn"></div>
+        <div class="count" id="count"></div>
+      </div>
+      <svg id="svg" viewBox="-10 -10 520 520" role="img" aria-label="Garden bed">
+        <defs>
+          <pattern id="soil" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle class="speck" cx="5" cy="6" r="1.2"/>
+            <circle class="speck" cx="16" cy="15" r="0.9"/>
+            <circle class="speck" cx="13" cy="3" r="0.7"/>
+          </pattern>
+        </defs>
+        <rect class="frame" x="-6" y="-6" width="512" height="512" rx="8"/>
+        <rect class="bed" x="0" y="0" width="500" height="500"/>
+        <rect x="0" y="0" width="500" height="500" fill="url(#soil)"/>
+        <g id="gEdges"></g>
+        <path id="stroke" class="stroke" d=""/>
+        <g id="gSpots"></g>
+      </svg>
+      <p class="msg" id="msg" aria-live="polite"></p>
+      <div class="win" id="win" hidden></div>
+      <div class="controls">
+        <button class="btn" id="btnStuck">I'm stuck</button>
+        <button class="btn" id="btnHint" hidden>Show a hint</button>
+        <button class="btn solid" id="btnNew">New game</button>
+      </div>
+    </section>
+
+    <aside>
+      <section class="card">
+        <h2>Settings</h2>
+        <div class="row">
+          <p class="row-label">Starting seeds</p>
+          <div class="pills" id="seedPills" role="group" aria-label="Starting seeds"></div>
+        </div>
+        <div class="row">
+          <p class="row-label">End of game</p>
+          <div class="pills" role="group" aria-label="End of game">
+            <button class="pill" data-mode="auto">Auto</button>
+            <button class="pill" data-mode="challenge">Challenge</button>
+          </div>
+          <p class="note" id="modeNote"></p>
+        </div>
+        <div class="row">
+          <p class="row-label">Helpers</p>
+          <div class="pills" role="group" aria-label="Helpers">
+            <button class="pill" data-helpers="on">On</button>
+            <button class="pill" data-helpers="off">Off</button>
+          </div>
+          <p class="note">Green dots show how many vines a seed can still take. Full seeds turn grey.</p>
+        </div>
+        <div class="row">
+          <p class="row-label">Surface</p>
+          <div class="pills" role="group" aria-label="Surface">
+            <button class="pill" aria-pressed="true">Square</button>
+            <button class="pill" disabled title="Coming soon">Torus <small>(soon)</small></button>
+            <button class="pill" disabled title="Coming soon">Klein bottle <small>(soon)</small></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Move log</h2>
+        <ol id="log"></ol>
+        <p class="muted" id="logEmpty">No moves yet. Player 1 goes first.</p>
+      </section>
+
+      <section class="card">
+        <h2>Scoreboard</h2>
+        <table>
+          <thead><tr><th>Seeds</th><th>Games</th><th>P1 wins</th><th>P2 wins</th></tr></thead>
+          <tbody id="scores"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <details>
+          <summary>How to play</summary>
+          <ol>
+            <li>The garden starts with a few seeds. Player 1 goes first.</li>
+            <li>On your turn, drag a vine from one seed to another seed. Or loop it back to the same seed.</li>
+            <li>A new seed sprouts in the middle of your vine.</li>
+            <li>Vines can't cross each other or themselves. They can't pass through a seed.</li>
+            <li>A seed can hold at most 3 vines. A loop counts as 2.</li>
+            <li>If you can't grow a vine on your turn, you lose. The last player to move wins.</li>
+          </ol>
+        </details>
+        <details>
+          <summary>Auto vs Challenge</summary>
+          <ul>
+            <li><strong>Auto:</strong> the game spots the end for you and names the winner.</li>
+            <li><strong>Challenge:</strong> the game never tells you it's over. When you think you have no move, tap "I'm stuck". The game checks your claim.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>For the curious (spoilers)</summary>
+          <ul>
+            <li>Each seed starts with 3 free shoots. A move uses 2 shoots, and the new seed brings 1. So every move removes exactly 1 shoot from the garden.</li>
+            <li>That means a game with <em>n</em> seeds lasts at most 3<em>n</em> − 1 moves. Why not 3<em>n</em>? Look at the last seed that sprouts.</li>
+            <li>A game also always lasts at least 2<em>n</em> moves.</li>
+            <li>With perfect play, Player 1 seems to win exactly when <em>n</em> leaves a remainder of 3, 4 or 5 when divided by 6. Computers have checked this for many values of <em>n</em>, but nobody has proved it yet.</li>
+          </ul>
+        </details>
+      </section>
+    </aside>
+  </main>
+
+  <footer>Draft prototype · Sprouts was invented by John Conway and Michael Paterson in 1967</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- Board geometry (board units; the bed is B x B) ----
+  const B = 500;
+  const S = 2;              // raster scale for region analysis
+  const R = B * S;
+  const SPOT_R = 14;        // drawn seed radius
+  const START_R = 34;       // how close a touch must be to start on a seed
+  const CAPTURE_R = 20;     // reaching this close to a seed finishes the vine
+  const ARM_R = 36;         // must get this far from the start seed before a loop can close
+  const NO_CLEAR_R = 14;    // inside this radius of a seed, vines may touch closely
+  const ZONE_R = 32;        // inside this radius of a seed, a smaller gap is allowed
+  const CLEAR = 7;          // normal minimum gap between vines
+  const CLEAR_NEAR = 4;     // minimum gap near seeds
+  const STEP = 2.5;         // spacing of recorded stroke points
+  const MARGIN = 4;         // vines must stay this far inside the bed
+
+  const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
+  const $ = id => document.getElementById(id);
+  const svg = $('svg'), gEdges = $('gEdges'), gSpots = $('gSpots'), strokeEl = $('stroke');
+
+  const raster = document.createElement('canvas');
+  raster.width = R; raster.height = R;
+  const rctx = raster.getContext('2d', { willReadFrequently: true });
+  const lab = new Int32Array(R * R);
+  const stack = new Int32Array(R * R);
+
+  // ---- Game state ----
+  let n = 4, mode = 'auto', helpers = true;
+  let spots = [], edges = [], segs = [], log = [];
+  let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
+  let analysis = { movable: true, hint: [] };
+  let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false;
+  const scores = {};
+  for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
+
+  // ---- Geometry helpers ----
+  function orient(ax, ay, bx, by, cx, cy) { return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); }
+  function onSeg(ax, ay, bx, by, px, py) {
+    return Math.min(ax, bx) - 1e-9 <= px && px <= Math.max(ax, bx) + 1e-9 &&
+           Math.min(ay, by) - 1e-9 <= py && py <= Math.max(ay, by) + 1e-9;
+  }
+  // Do segments AB and CD cross? Segments that only share an endpoint (a seed centre) do not cross,
+  // unless they run along each other.
+  function segX(ax, ay, bx, by, cx, cy, dx, dy) {
+    let sx = null, sy, ux, uy, vx, vy;
+    if (ax === cx && ay === cy) { sx = ax; sy = ay; ux = bx; uy = by; vx = dx; vy = dy; }
+    else if (ax === dx && ay === dy) { sx = ax; sy = ay; ux = bx; uy = by; vx = cx; vy = cy; }
+    else if (bx === cx && by === cy) { sx = bx; sy = by; ux = ax; uy = ay; vx = dx; vy = dy; }
+    else if (bx === dx && by === dy) { sx = bx; sy = by; ux = ax; uy = ay; vx = cx; vy = cy; }
+    if (sx !== null) {
+      if (Math.hypot(ux - sx, uy - sy) < 1e-6 || Math.hypot(vx - sx, vy - sy) < 1e-6) return false;
+      let d = Math.abs(Math.atan2(uy - sy, ux - sx) - Math.atan2(vy - sy, vx - sx));
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      return d < 0.08;
+    }
+    const d1 = orient(cx, cy, dx, dy, ax, ay), d2 = orient(cx, cy, dx, dy, bx, by);
+    const d3 = orient(ax, ay, bx, by, cx, cy), d4 = orient(ax, ay, bx, by, dx, dy);
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+    if (d1 === 0 && onSeg(cx, cy, dx, dy, ax, ay)) return true;
+    if (d2 === 0 && onSeg(cx, cy, dx, dy, bx, by)) return true;
+    if (d3 === 0 && onSeg(ax, ay, bx, by, cx, cy)) return true;
+    if (d4 === 0 && onSeg(ax, ay, bx, by, dx, dy)) return true;
+    return false;
+  }
+  function dSeg(px, py, ax, ay, bx, by) {
+    const vx = bx - ax, vy = by - ay, L = vx * vx + vy * vy;
+    let t = L ? ((px - ax) * vx + (py - ay) * vy) / L : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
+  }
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const lives = s => 3 - s.deg;
+
+  function rebuildSegs() {
+    segs = [];
+    edges.forEach((e, ei) => {
+      const P = e.pts;
+      for (let k = 0; k < P.length - 1; k++) segs.push([P[k].x, P[k].y, P[k + 1].x, P[k + 1].y, ei]);
+    });
+  }
+
+  // ---- Setup ----
+  function layout(count) {
+    const r = count <= 2 ? 100 : count <= 4 ? 135 : 165;
+    const off = -Math.PI / 2 + (count % 2 === 0 ? Math.PI / count : 0);
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const a = off + i * 2 * Math.PI / count;
+      out.push({ x: Math.round(B / 2 + r * Math.cos(a)), y: Math.round(B / 2 + r * Math.sin(a)), deg: 0 });
+    }
+    return out;
+  }
+
+  function newGame() {
+    spots = layout(n);
+    edges = []; segs = []; log = [];
+    moveCount = 0; player = 1; over = false; winner = 0; overText = '';
+    hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+    analyze();
+    setMsg(defaultMsg());
+    render();
+  }
+
+  function defaultMsg() { return 'Drag from a seed to grow a vine.'; }
+
+  let msgBad = false;
+  function setMsg(text, bad) {
+    const el = $('msg');
+    el.textContent = text;
+    msgBad = !!bad;
+    el.classList.toggle('bad', msgBad);
+  }
+
+  // ---- Drawing ----
+  function toBoard(e) {
+    const m = svg.getScreenCTM();
+    if (!m) return null;
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    return { x: p.x, y: p.y };
+  }
+
+  svg.addEventListener('pointerdown', e => {
+    if (drag) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (over) { setMsg('This game is over. Tap "Play again" for a new one.'); return; }
+    const p = toBoard(e);
+    if (!p) return;
+    let best = -1, bd = Infinity;
+    spots.forEach((s, i) => { const d = dist(s, p); if (d < bd) { bd = d; best = i; } });
+    if (bd > START_R) { setMsg('Start your vine on a seed.', true); return; }
+    const s = spots[best];
+    if (lives(s) <= 0) { setMsg('That seed is full. It already has 3 vines.', true); return; }
+    e.preventDefault();
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    drag = { id: e.pointerId, start: best, pts: [{ x: s.x, y: s.y }], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
+    hintSpots = null;
+    setMsg('Now reach another seed, or loop back to this one.');
+    addPoint({ x: p.x, y: p.y });
+    renderStroke(); renderSpots();
+  });
+
+  svg.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const list = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+    for (const ev of list) {
+      const p = toBoard(ev);
+      if (!p) continue;
+      drag.sm.x += (p.x - drag.sm.x) * 0.5;   // light smoothing of a shaky finger
+      drag.sm.y += (p.y - drag.sm.y) * 0.5;
+      addPoint({ x: drag.sm.x, y: drag.sm.y });
+      if (!drag) return;                       // the vine was completed
+    }
+    renderStroke();
+  });
+
+  function endDrag(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const bad = drag.invalid;
+    drag = null;
+    renderStroke(); renderSpots();
+    if (bad) setMsg(bad + ' Try again.', true);
+    else setMsg('Finish your vine on a seed, or loop back to the same seed.', true);
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  function addPoint(q) {
+    const last = drag.pts[drag.pts.length - 1];
+    const d = dist(q, last);
+    if (d < STEP) return;
+    const steps = Math.ceil(d / STEP);
+    for (let k = 1; k <= steps; k++) {
+      pushPoint({ x: last.x + (q.x - last.x) * k / steps, y: last.y + (q.y - last.y) * k / steps });
+      if (!drag) return;
+    }
+  }
+
+  function pushPoint(p) {
+    const d = drag;
+    const prev = d.pts[d.pts.length - 1];
+    if (!d.invalid) {
+      const reason = checkPoint(prev, p);
+      if (reason) fail(reason);
+    }
+    d.pts.push(p);
+    d.cum.push(d.cum[d.cum.length - 1] + dist(p, prev));
+    if (d.invalid) return;
+    const st = spots[d.start];
+    if (!d.armed && dist(p, st) > ARM_R) d.armed = true;
+    for (let i = 0; i < spots.length; i++) {
+      if (i === d.start && !d.armed) continue;
+      if (dist(p, spots[i]) < CAPTURE_R) { tryFinish(i); return; }
+    }
+  }
+
+  function fail(reason) {
+    drag.invalid = reason;
+    setMsg(reason, true);
+  }
+
+  function clearanceNeeded(p) {
+    let m = Infinity;
+    for (const s of spots) m = Math.min(m, dist(p, s));
+    if (m < NO_CLEAR_R) return 0;
+    if (m < ZONE_R) return CLEAR_NEAR;
+    return CLEAR;
+  }
+
+  function checkPoint(a, b) {
+    if (b.x < MARGIN || b.y < MARGIN || b.x > B - MARGIN || b.y > B - MARGIN) return 'Keep your vine inside the garden bed.';
+    for (const s of segs) if (segX(a.x, a.y, b.x, b.y, s[0], s[1], s[2], s[3])) return 'Vines can’t cross each other.';
+    const P = drag.pts;
+    for (let i = 0; i < P.length - 2; i++) {
+      if (segX(a.x, a.y, b.x, b.y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y)) return 'A vine can’t cross itself.';
+    }
+    const need = clearanceNeeded(b);
+    if (need > 0) {
+      for (const s of segs) if (dSeg(b.x, b.y, s[0], s[1], s[2], s[3]) < need) return 'Too close to another vine. Leave a little room.';
+      const L = drag.cum[drag.cum.length - 1];
+      for (let i = 0; i < P.length - 1; i++) {
+        if (L - drag.cum[i + 1] < 3 * CLEAR) break;
+        if (dSeg(b.x, b.y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y) < need) return 'Too close to your own vine.';
+      }
+    }
+    return null;
+  }
+
+  function tryFinish(i) {
+    const d = drag, s = spots[i];
+    if (i === d.start) {
+      if (lives(s) < 2) { fail('A loop needs 2 free shoots on its seed.'); return; }
+    } else if (lives(s) <= 0) { fail('That seed is full. It already has 3 vines.'); return; }
+    const a = d.pts[d.pts.length - 1], b = { x: s.x, y: s.y };
+    for (const sg of segs) if (segX(a.x, a.y, b.x, b.y, sg[0], sg[1], sg[2], sg[3])) { fail('Vines can’t cross each other.'); return; }
+    const P = d.pts;
+    for (let k = 0; k < P.length - 2; k++) {
+      if (segX(a.x, a.y, b.x, b.y, P[k].x, P[k].y, P[k + 1].x, P[k + 1].y)) { fail('A vine can’t cross itself.'); return; }
+    }
+    d.pts.push(b);
+    commit(i);
+  }
+
+  // Place the new seed near the middle of the vine, at the roomiest spot.
+  function pickSplit(P) {
+    const cum = [0];
+    for (let k = 1; k < P.length; k++) cum.push(cum[k - 1] + dist(P[k], P[k - 1]));
+    const L = cum[cum.length - 1];
+    let bestK = -1, best = -Infinity;
+    for (let k = 1; k < P.length - 1; k++) {
+      const t = cum[k] / L;
+      if (t < 0.3 || t > 0.7) continue;
+      const p = P[k];
+      let de = Infinity;
+      for (const s of segs) de = Math.min(de, dSeg(p.x, p.y, s[0], s[1], s[2], s[3]));
+      for (let j = 0; j < P.length - 1; j++) {
+        if (Math.abs(cum[j] - cum[k]) < 40 || Math.abs(cum[j + 1] - cum[k]) < 40) continue;
+        de = Math.min(de, dSeg(p.x, p.y, P[j].x, P[j].y, P[j + 1].x, P[j + 1].y));
+      }
+      let ds = Infinity;
+      for (const s of spots) ds = Math.min(ds, dist(p, s));
+      const score = Math.min(de, ds * 0.6, 40) - Math.abs(t - 0.5) * 20;
+      if (score > best) { best = score; bestK = k; }
+    }
+    if (bestK < 0) bestK = Math.max(1, Math.min(P.length - 2, Math.floor(P.length / 2)));
+    return bestK;
+  }
+
+  function commit(target) {
+    const d = drag;
+    drag = null;
+    const P = d.pts;
+    const k = pickSplit(P);
+    const ns = { x: P[k].x, y: P[k].y, deg: 2 };
+    spots.push(ns);
+    const ni = spots.length - 1;
+    edges.push({ a: d.start, b: ni, pts: P.slice(0, k + 1), player });
+    edges.push({ a: ni, b: target, pts: P.slice(k), player });
+    spots[d.start].deg++;
+    spots[target].deg++;
+    moveCount++;
+    const loop = d.start === target;
+    log.push({ n: moveCount, p: player, text: loop ? 'looped a vine back to one seed' : 'joined two seeds' });
+    popIdx = ni;
+    showHintBtn = false;
+    hintSpots = null;
+    rebuildSegs();
+    const mover = player;
+    player = 3 - player;
+    analyze();
+    if (!analysis.movable && mode === 'auto') {
+      endGame(mover, `No legal moves are left. Player ${mover} made the last move.`);
+    } else {
+      setMsg(`Player ${mover} grew a vine. Player ${player}'s turn.`);
+    }
+    render();
+  }
+
+  // ---- Region analysis ----
+  // Draw every vine onto a hidden grid, flood-fill the gaps into regions, then work out which
+  // regions each seed touches. A move exists if some region has 2+ free shoots on its border.
+  function labelAt(x, y) {
+    const ix = Math.min(R - 1, Math.max(0, Math.floor(x * S)));
+    const iy = Math.min(R - 1, Math.max(0, Math.floor(y * S)));
+    return lab[iy * R + ix];
+  }
+  function minDistOther(x, y, ei, limit) {
+    let m = Infinity;
+    for (const s of segs) {
+      if (s[4] === ei) continue;
+      const d = dSeg(x, y, s[0], s[1], s[2], s[3]);
+      if (d < m) { m = d; if (m < limit) return m; }
+    }
+    return m;
+  }
+  // The regions on either side of an edge, sampled just off the vine where nothing else is near.
+  function edgeSides(e, ei) {
+    let P = e.pts;
+    if (P.length < 3) {
+      const a = P[0], b = P[P.length - 1];
+      P = [];
+      for (let t = 0; t <= 8; t++) P.push({ x: a.x + (b.x - a.x) * t / 8, y: a.y + (b.y - a.y) * t / 8 });
+    }
+    const m = P.length, mid = (m - 1) / 2, order = [];
+    for (let k = 1; k < m - 1; k++) order.push(k);
+    order.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid));
+    const found = new Set();
+    for (const k of order) {
+      const tx = P[k + 1].x - P[k - 1].x, ty = P[k + 1].y - P[k - 1].y, len = Math.hypot(tx, ty);
+      if (len < 1e-6) continue;
+      const nx = -ty / len, ny = tx / len;
+      let got = 0;
+      for (const sg of [1, -1]) {
+        const sx = P[k].x + nx * 4 * sg, sy = P[k].y + ny * 4 * sg;
+        if (sx < 0 || sy < 0 || sx >= B || sy >= B) continue;
+        const l = labelAt(sx, sy);
+        if (l < 0) continue;
+        if (minDistOther(sx, sy, ei, 5) < 5) continue;
+        found.add(l); got++;
+      }
+      if (got === 2 || found.size === 2) break;
+    }
+    return [...found];
+  }
+
+  function analyze() {
+    rctx.setTransform(1, 0, 0, 1, 0, 0);
+    rctx.clearRect(0, 0, R, R);
+    rctx.setTransform(S, 0, 0, S, 0, 0);
+    rctx.lineWidth = 0.75; rctx.lineCap = 'round'; rctx.lineJoin = 'round'; rctx.strokeStyle = '#000';
+    for (const e of edges) {
+      rctx.beginPath();
+      rctx.moveTo(e.pts[0].x, e.pts[0].y);
+      for (let k = 1; k < e.pts.length; k++) rctx.lineTo(e.pts[k].x, e.pts[k].y);
+      rctx.stroke();
+    }
+    const img = rctx.getImageData(0, 0, R, R).data;
+    const N = R * R;
+    for (let i = 0; i < N; i++) lab[i] = img[i * 4 + 3] > 0 ? -2 : -1;
+    let nl = 0;
+    for (let i = 0; i < N; i++) {
+      if (lab[i] !== -1) continue;
+      let sp = 0;
+      stack[sp++] = i; lab[i] = nl;
+      while (sp > 0) {
+        const c = stack[--sp], x = c % R;
+        if (x > 0 && lab[c - 1] === -1) { lab[c - 1] = nl; stack[sp++] = c - 1; }
+        if (x < R - 1 && lab[c + 1] === -1) { lab[c + 1] = nl; stack[sp++] = c + 1; }
+        if (c >= R && lab[c - R] === -1) { lab[c - R] = nl; stack[sp++] = c - R; }
+        if (c < N - R && lab[c + R] === -1) { lab[c + R] = nl; stack[sp++] = c + R; }
+      }
+      nl++;
+    }
+    const sides = edges.map((e, ei) => edgeSides(e, ei));
+    const regionsOf = spots.map((s, i) => {
+      if (s.deg === 0) { const l = labelAt(s.x, s.y); return l >= 0 ? [l] : []; }
+      const set = new Set();
+      edges.forEach((e, ei) => { if (e.a === i || e.b === i) sides[ei].forEach(l => set.add(l)); });
+      return [...set];
+    });
+    const sum = new Map(), members = new Map();
+    spots.forEach((s, i) => {
+      const L = lives(s);
+      if (L <= 0) return;
+      for (const l of regionsOf[i]) {
+        sum.set(l, (sum.get(l) || 0) + L);
+        if (!members.has(l)) members.set(l, []);
+        members.get(l).push(i);
+      }
+    });
+    let hint = [];
+    for (const [l, v] of sum) if (v >= 2) { hint = members.get(l); break; }
+    analysis = { movable: hint.length > 0, hint, regions: nl };
+  }
+
+  // ---- End of game ----
+  function endGame(w, text) {
+    over = true; winner = w; overText = text; drag = null; showHintBtn = false; hintSpots = null;
+    scores[n].games++;
+    scores[n]['p' + w]++;
+    setMsg('');
+  }
+
+  function stuck() {
+    if (over || drag) return;
+    if (analysis.movable) {
+      log.push({ n: null, p: player, text: 'said "I\'m stuck", but a move was left' });
+      showHintBtn = true;
+      setMsg('Not yet! There is still a legal move somewhere.', true);
+    } else {
+      const w = 3 - player;
+      log.push({ n: null, p: player, text: 'said "I\'m stuck" and was right' });
+      endGame(w, `Player ${player} has no legal move. Player ${w} made the last move.`);
+    }
+    render();
+  }
+
+  function showHint() {
+    if (over) return;
+    hintSpots = analysis.hint.slice();
+    showHintBtn = false;
+    setMsg('The glowing seeds share a patch of soil. A vine can join them there.');
+    render();
+  }
+
+  // ---- Rendering ----
+  function pathD(P) {
+    return 'M' + P.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' L');
+  }
+
+  function renderEdges() {
+    gEdges.innerHTML = edges.map(e => {
+      const d = pathD(e.pts);
+      return `<path class="vine" d="${d}" style="stroke:${PCOL[e.player]}"/><path class="vine-hi" d="${d}"/>`;
+    }).join('');
+  }
+
+  function renderStroke() {
+    if (!drag) { strokeEl.setAttribute('d', ''); return; }
+    strokeEl.setAttribute('d', pathD(drag.pts));
+    strokeEl.setAttribute('class', drag.invalid ? 'stroke bad' : 'stroke');
+    strokeEl.style.stroke = PCOL[player];
+  }
+
+  const PIPS = { 3: [[0, -5.2], [-4.8, 3], [4.8, 3]], 2: [[-4.3, 0], [4.3, 0]], 1: [[0, 0]] };
+  function renderSpots() {
+    gSpots.innerHTML = spots.map((s, i) => {
+      const L = lives(s);
+      const cls = 'seed' + (helpers && L <= 0 ? ' wilt' : '') + (i === popIdx ? ' pop' : '');
+      let pips = '';
+      if (helpers && L > 0) pips = PIPS[L].map(([dx, dy]) => `<circle class="pip" cx="${s.x + dx}" cy="${s.y + dy}" r="2.8"/>`).join('');
+      let rings = '';
+      if (drag && i === drag.start) rings += `<circle class="ring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 6}" style="stroke:${PCOL[player]}"/>`;
+      if (hintSpots && hintSpots.includes(i)) rings += `<circle class="hintring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 7}"/>`;
+      return `<g class="${cls}"><circle class="seed-body" cx="${s.x}" cy="${s.y}" r="${SPOT_R}"/>${pips}</g>${rings}`;
+    }).join('');
+    popIdx = -1;
+    svg.setAttribute('aria-label', `Garden bed with ${spots.length} seeds and ${edges.length} vine pieces.`);
+  }
+
+  function renderStatus() {
+    const max = 3 * n - 1;
+    if (over) {
+      $('turn').innerHTML = `<span class="chip" style="background:${PCOL[winner]}"></span>Player ${winner} wins!`;
+      $('count').textContent = `${moveCount} moves`;
+      const win = $('win');
+      win.hidden = false;
+      win.style.color = PCOL[winner];
+      win.innerHTML = `${overText}
+        <p>The game lasted ${moveCount} moves. With ${n} seeds it can never go past ${max}. Can you see why?
+        Play again with ${n} seeds. Does the same player keep winning?</p>`;
+    } else {
+      $('turn').innerHTML = `<span class="chip" style="background:${PCOL[player]}"></span>Player ${player}'s turn`;
+      $('count').textContent = `Move ${moveCount + 1} · at most ${max}`;
+      $('win').hidden = true;
+    }
+  }
+
+  function renderControls() {
+    $('btnStuck').hidden = mode !== 'challenge' || over;
+    $('btnHint').hidden = !showHintBtn || over;
+    $('btnNew').textContent = over ? 'Play again' : 'New game';
+  }
+
+  function renderSettings() {
+    document.querySelectorAll('[data-seeds]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.seeds === n)));
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+    document.querySelectorAll('[data-helpers]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.helpers === 'on') === helpers)));
+    $('modeNote').textContent = mode === 'auto'
+      ? 'The game announces the winner when no moves are left.'
+      : 'The game stays quiet. Tap "I\'m stuck" when you think you can\'t move.';
+  }
+
+  function renderLog() {
+    $('log').innerHTML = log.map(item =>
+      `<li${item.n ? '' : ' style="list-style:none"'}><strong style="color:${PCOL[item.p]}">Player ${item.p}</strong> ${item.text}</li>`
+    ).join('');
+    $('logEmpty').hidden = log.length > 0;
+    const el = $('log');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function renderScores() {
+    $('scores').innerHTML = Object.keys(scores).map(k => {
+      const s = scores[k];
+      return `<tr class="${+k === n ? 'current' : ''}"><td>${k}</td><td>${s.games}</td><td>${s.p1}</td><td>${s.p2}</td></tr>`;
+    }).join('');
+  }
+
+  function render() {
+    renderStatus();
+    renderEdges();
+    renderSpots();
+    renderStroke();
+    renderControls();
+    renderSettings();
+    renderLog();
+    renderScores();
+  }
+
+  // ---- Wiring ----
+  const seedPills = $('seedPills');
+  for (let k = 2; k <= 8; k++) {
+    const b = document.createElement('button');
+    b.className = 'pill'; b.dataset.seeds = k; b.textContent = k;
+    b.addEventListener('click', () => { n = k; newGame(); });
+    seedPills.appendChild(b);
+  }
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.mode;
+    showHintBtn = false;
+    if (mode === 'auto' && !over && !analysis.movable) {
+      endGame(3 - player, `No legal moves are left. Player ${3 - player} made the last move.`);
+    }
+    render();
+  }));
+  document.querySelectorAll('[data-helpers]').forEach(b => b.addEventListener('click', () => {
+    helpers = b.dataset.helpers === 'on';
+    render();
+  }));
+  $('btnStuck').addEventListener('click', stuck);
+  $('btnHint').addEventListener('click', showHint);
+  $('btnNew').addEventListener('click', newGame);
+
+  // Small hook for automated testing; harmless in normal play.
+  window.__sprouts = { state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode }) };
+
+  newGame();
+})();
+</script>
+</body>
+</html>
