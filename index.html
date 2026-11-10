@@ -300,6 +300,8 @@
   const STEP = 2.5;         // spacing of recorded stroke points
   const MARGIN = 4;         // vines must stay this far inside the bed
   const TAP_LEN = 12;       // a stroke shorter than this is a tap, not a failed vine
+  const SEED_GAP_V = SPOT_R + 2;   // a new seed needs this much room from other vines
+  const SEED_GAP_S = 2 * SPOT_R;   // and this much from other seeds, so seeds never overlap
 
   const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
   const $ = id => document.getElementById(id);
@@ -534,7 +536,9 @@
     commit(i);
   }
 
-  // Place the new seed near the middle of the vine, at the roomiest spot.
+  // Place the new seed near the middle of the vine, at the roomiest spot. Returns -1 when no spot
+  // in the middle 30-70% of the vine has room for a seed: at least SEED_GAP_V from other vines and
+  // SEED_GAP_S from other seeds.
   function pickSplit(P) {
     const cum = [0];
     for (let k = 1; k < P.length; k++) cum.push(cum[k - 1] + dist(P[k], P[k - 1]));
@@ -552,18 +556,19 @@
       }
       let ds = Infinity;
       for (const s of spots) ds = Math.min(ds, dist(p, s));
+      if (de < SEED_GAP_V || ds < SEED_GAP_S) continue;
       const score = Math.min(de, ds * 0.6, 40) - Math.abs(t - 0.5) * 20;
       if (score > best) { best = score; bestK = k; }
     }
-    if (bestK < 0) bestK = Math.max(1, Math.min(P.length - 2, Math.floor(P.length / 2)));
     return bestK;
   }
 
   function commit(target) {
     const d = drag;
-    drag = null;
     const P = d.pts;
     const k = pickSplit(P);
+    if (k < 0) { fail('No room for a new seed on that vine.'); return; }
+    drag = null;
     const ns = { x: P[k].x, y: P[k].y, deg: 2 };
     spots.push(ns);
     const ni = spots.length - 1;

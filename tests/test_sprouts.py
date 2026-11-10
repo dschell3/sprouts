@@ -173,6 +173,19 @@ with sync_playwright() as pw:
     check(s["spots"] == [[100, 250, 0], [400, 250, 2], [250, 100, 3]] and s["moves"] == 0 and s["movable"],
           f"loaded position: {s['spots']} movable={s['movable']}")
 
+    # --- New seed needs room: a vine squeezed down a lane 16 wide is drawable but can't sprout ---
+    def lane_position(half):
+        # two full-seed "fences" above and below y=250, each `half` units from the centre line
+        return ([seed(100, 250), seed(400, 250), seed(130, 200, 3), seed(370, 200, 3), seed(130, 300, 3), seed(370, 300, 3)],
+                [edge(2, 3, [(130, 200), (160, 250 - half), (340, 250 - half), (370, 200)]),
+                 edge(4, 5, [(130, 300), (160, 250 + half), (340, 250 + half), (370, 300)])])
+    g.load(*lane_position(8))
+    g.stroke([(100, 250), (400, 250)])
+    check(g.st()["moves"] == 0 and "No room" in g.msg(), "vine with no room for a seed rejected; msg=" + g.msg())
+    g.load(*lane_position(20))
+    g.stroke([(100, 250), (400, 250)])
+    check(g.st()["moves"] == 1, "same vine with room accepted; msg=" + g.msg())
+
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
     check(len(g.st()["spots"]) == 8, "8 seeds")
