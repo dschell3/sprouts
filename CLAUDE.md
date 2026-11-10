@@ -49,7 +49,7 @@ All coordinates are in **board units**: the bed is `B = 500` square (SVG viewBox
 - Seed centres are shared by exact coordinate equality. `segX()` relies on this: segments that only share an endpoint don't count as crossing, unless they overlap at a near-zero angle.
 
 **Drawing pipeline:** `pointerdown`, then `pointermove` (coalesced events with light exponential smoothing), then `addPoint` (subdivided into steps of `STEP` = 2.5), then `pushPoint`, then `checkPoint`.
-- A stroke must start within `START_R` of a seed that has lives.
+- A stroke must start within `START_R` of a seed that has lives. Nothing is recorded until the finger leaves the seed body (`SPOT_R`); the first segment then runs from the centre in the exit direction, so two vines started by touching the same spot on a seed don't share an overlapping stub.
 - A stroke **auto-completes** when it comes within `CAPTURE_R` of a seed. The start seed only counts after the stroke has "armed", i.e. moved `ARM_R` away from it.
 - Rejections:
   - out of bounds (`MARGIN`);

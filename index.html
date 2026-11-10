@@ -8,6 +8,9 @@
   /* Garden theme. Layout: board card on the left, panel on the right; stacks to one column on phones */
   :root {
     --bg: #eef2e6;
+    --bg2: #e3ead6;
+    --leaf: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22140%22%20height=%22140%22%20viewBox=%220%200%20140%20140%22%3E%3Cg%20fill=%22%25232a3a22%22%3E%3Cpath%20d=%22M24%2014c-8%206-11%2016-7%2027%2010-4%2014-14%207-27z%22/%3E%3Cpath%20transform=%22rotate(35%2092%2048)%22%20d=%22M92%2034c-7%205-9%2013-6%2022%208-3%2011-11%206-22z%22/%3E%3Cpath%20transform=%22rotate(-50%2050%20104)%22%20d=%22M50%2090c-6%205-8%2012-5%2020%207-3%2010-10%205-20z%22/%3E%3Cpath%20transform=%22rotate(70%20118%20112)%22%20d=%22M118%20100c-5%204-7%2010-4%2017%206-3%208-9%204-17z%22/%3E%3C/g%3E%3C/svg%3E");
+    --leaf-op: .035;
     --card: #fbfcf7;
     --ink: #23301f;
     --muted: #5f6e57;
@@ -18,8 +21,10 @@
     --p1: #2e7d4f;
     --p2: #c0622b;
     --seed: #6f4e33;
+    --seed-hi: #a07a58;
     --pip: #9be07a;
     --wilt: #c3b8a6;
+    --wilt-hi: #e2dacc;
     --bad: #c23b2e;
     --hint: #e0a100;
     --btn-bg: #ffffff;
@@ -30,9 +35,9 @@
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #151b13; --card: #1f271c; --ink: #e7eedf; --muted: #a3b298; --line: #33402e;
+      --bg: #151b13; --bg2: #0f140e; --leaf: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22140%22%20height=%22140%22%20viewBox=%220%200%20140%20140%22%3E%3Cg%20fill=%22%2523cfe0c0%22%3E%3Cpath%20d=%22M24%2014c-8%206-11%2016-7%2027%2010-4%2014-14%207-27z%22/%3E%3Cpath%20transform=%22rotate(35%2092%2048)%22%20d=%22M92%2034c-7%205-9%2013-6%2022%208-3%2011-11%206-22z%22/%3E%3Cpath%20transform=%22rotate(-50%2050%20104)%22%20d=%22M50%2090c-6%205-8%2012-5%2020%207-3%2010-10%205-20z%22/%3E%3Cpath%20transform=%22rotate(70%20118%20112)%22%20d=%22M118%20100c-5%204-7%2010-4%2017%206-3%208-9%204-17z%22/%3E%3C/g%3E%3C/svg%3E"); --leaf-op: .04; --card: #1f271c; --ink: #e7eedf; --muted: #a3b298; --line: #33402e;
       --bed: #2c2519; --speck: #3b3223; --frame: #7a5a3c;
-      --p1: #5cc08a; --p2: #ec8a52; --seed: #d2a676; --pip: #2d6a2e; --wilt: #5e574c;
+      --p1: #5cc08a; --p2: #ec8a52; --seed: #d2a676; --seed-hi: #f0d1a6; --pip: #2d6a2e; --wilt: #5e574c; --wilt-hi: #7d7466;
       --bad: #ff6b5b; --hint: #ffc83d; --btn-bg: #283224; --solid: #e7eedf; --solid-ink: #151b13;
       --ring: #1f271c;
       color-scheme: dark;
@@ -41,11 +46,18 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
+    min-height: 100vh;
     font-family: var(--font);
     font-size: 16px;
-    background: var(--bg);
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%) fixed;
     color: var(--ink);
     line-height: 1.45;
+  }
+  /* Faint leaves scattered over the page, drawn inline so they flip with the theme */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image: var(--leaf); background-size: 140px 140px;
+    opacity: var(--leaf-op);
   }
   .wrap {
     max-width: 1060px;
@@ -102,19 +114,34 @@
   .frame { fill: var(--frame); }
   .bed { fill: var(--bed); }
   .speck { fill: var(--speck); }
+  #turnRing { fill: none; stroke-width: 4; transition: stroke .35s; }
   .vine { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
   .vine-hi { fill: none; stroke: #ffffff; stroke-opacity: .3; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
   .stroke { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
   .stroke.bad { stroke: var(--bad) !important; stroke-dasharray: 6 5; opacity: .95; }
-  .seed-body { fill: var(--seed); stroke: var(--ring); stroke-width: 2.5; }
-  .wilt .seed-body { fill: var(--wilt); }
+  .seed-body { fill: url(#seedFill); stroke: var(--ring); stroke-width: 2.5; }
+  .wilt .seed-body { fill: url(#wiltFill); }
   .pip { fill: var(--pip); }
   .ring { fill: none; stroke-width: 3; stroke-dasharray: 4 4; }
   .hintring { fill: none; stroke: var(--hint); stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-  .pop { animation: pop .5s cubic-bezier(.3,1.6,.6,1); transform-box: fill-box; transform-origin: center; }
+  .pop { animation: pop .5s cubic-bezier(.3,1.6,.6,1) both; transform-box: fill-box; transform-origin: center; }
+  /* A new vine draws itself from the start seed; the second half waits for the first */
+  .grow { animation: grow linear both; }
+  /* Game over: the winner's vines glow, the loser's fade back, leftover shoots wither */
+  .vine { transition: opacity .8s; }
+  #svg[data-over="1"] .vine.p2, #svg[data-over="2"] .vine.p1 { opacity: .4; }
+  #svg[data-over="1"] .vine.p1 { filter: drop-shadow(0 0 3px var(--p1)); }
+  #svg[data-over="2"] .vine.p2 { filter: drop-shadow(0 0 3px var(--p2)); }
+  #svg[data-over] .pip { animation: wither .9s ease-in .3s both; }
+  @keyframes wither { to { opacity: 0; transform: scale(.4); } }
+  #svg[data-over] .pip { transform-box: fill-box; transform-origin: center; }
+  @keyframes grow { to { stroke-dashoffset: 0; } }
   @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
   @keyframes pulse { 0%,100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.25); opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .hintring, .pop { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hintring, .pop, .grow { animation: none; } .grow { stroke-dashoffset: 0 !important; }
+    .vine { transition: none; } #svg[data-over] .pip { animation: none; opacity: 0; }
+  }
 
   .msg { color: var(--muted); font-size: 0.92rem; margin: 8px 0 0; text-align: center; min-height: 1.4em; }
   .msg.bad { color: var(--bad); font-weight: 600; }
@@ -192,6 +219,14 @@
       </div>
       <svg id="svg" viewBox="-10 -10 520 520" role="img" aria-label="Garden bed">
         <defs>
+          <radialGradient id="seedFill" cx="38%" cy="32%" r="72%">
+            <stop offset="0" style="stop-color:var(--seed-hi)"/>
+            <stop offset="1" style="stop-color:var(--seed)"/>
+          </radialGradient>
+          <radialGradient id="wiltFill" cx="38%" cy="32%" r="72%">
+            <stop offset="0" style="stop-color:var(--wilt-hi)"/>
+            <stop offset="1" style="stop-color:var(--wilt)"/>
+          </radialGradient>
           <pattern id="soil" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle class="speck" cx="5" cy="6" r="1.2"/>
             <circle class="speck" cx="16" cy="15" r="0.9"/>
@@ -201,6 +236,7 @@
         <rect class="frame" x="-6" y="-6" width="512" height="512" rx="8"/>
         <rect class="bed" x="0" y="0" width="500" height="500"/>
         <rect x="0" y="0" width="500" height="500" fill="url(#soil)"/>
+        <rect id="turnRing" x="2" y="2" width="496" height="496"/>
         <g id="gEdges"></g>
         <path id="stroke" class="stroke" d=""/>
         <g id="gSpots"></g>
@@ -341,6 +377,8 @@
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
   let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false, giveUpArmed = 0;
+  let growFrom = -1, popDelay = 0;   // edges from this index on animate in; the new seed pops after the first half
+  const GROW_SPEED = 900;            // board units per second
   const scores = {};
   for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
 
@@ -406,7 +444,7 @@
     spots = layout(n);
     edges = []; segs = []; log = [];
     moveCount = 0; player = 1; over = false; winner = 0; overText = '';
-    hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+    hintSpots = null; popIdx = -1; drag = null; showHintBtn = false; growFrom = -1;
     clearTimeout(giveUpArmed); giveUpArmed = 0;
     analyze();
     setMsg(defaultMsg());
@@ -447,7 +485,6 @@
     drag = { id: e.pointerId, start: best, pts: [{ x: s.x, y: s.y }], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
     hintSpots = null;
     setMsg('Now reach another seed, or loop back to this one.');
-    addPoint({ x: p.x, y: p.y });
     renderStroke(); renderSpots();
   });
 
@@ -482,6 +519,10 @@
   svg.addEventListener('contextmenu', e => e.preventDefault());   // long-press menu on Android
 
   function addPoint(q) {
+    // Nothing is recorded while the finger is still on the seed body. The vine's first segment
+    // then runs from the centre in the direction the finger left, not toward where it landed,
+    // so two vines started from the same spot on a seed don't share an overlapping stub.
+    if (drag.pts.length === 1 && dist(q, spots[drag.start]) < SPOT_R) return;
     const last = drag.pts[drag.pts.length - 1];
     const d = dist(q, last);
     if (d < STEP) return;
@@ -606,6 +647,7 @@
     const loop = d.start === target;
     log.push({ n: moveCount, p: player, text: loop ? 'looped a vine back to one seed' : 'joined two seeds' });
     popIdx = ni;
+    growFrom = edges.length - 2;
     showHintBtn = false;
     hintSpots = null;
     rebuildSegs();
@@ -768,11 +810,27 @@
     return 'M' + P.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' L');
   }
 
+  function pathLen(P) {
+    let L = 0;
+    for (let k = 1; k < P.length; k++) L += dist(P[k], P[k - 1]);
+    return L;
+  }
   function renderEdges() {
-    gEdges.innerHTML = edges.map(e => {
+    let delay = 0;
+    popDelay = 0;
+    gEdges.innerHTML = edges.map((e, ei) => {
       const d = pathD(e.pts);
-      return `<path class="vine" d="${d}" style="stroke:${PCOL[e.player]}"/><path class="vine-hi" d="${d}"/>`;
+      let cls = 'vine p' + e.player, hi = 'vine-hi', anim = '';
+      if (growFrom >= 0 && ei >= growFrom) {
+        const L = pathLen(e.pts), dur = L / GROW_SPEED;
+        cls += ' grow'; hi += ' grow';
+        anim = `stroke-dasharray:${L.toFixed(1)};stroke-dashoffset:${L.toFixed(1)};animation-duration:${dur.toFixed(3)}s;animation-delay:${delay.toFixed(3)}s;`;
+        if (ei === growFrom) popDelay = dur;
+        delay += dur;
+      }
+      return `<path class="${cls}" d="${d}" style="stroke:${PCOL[e.player]};${anim}"/><path class="${hi}" d="${d}" style="${anim}"/>`;
     }).join('');
+    growFrom = -1;
   }
 
   function renderStroke() {
@@ -787,12 +845,13 @@
     gSpots.innerHTML = spots.map((s, i) => {
       const L = lives(s);
       const cls = 'seed' + (helpers && L <= 0 ? ' wilt' : '') + (i === popIdx ? ' pop' : '');
+      const anim = i === popIdx && popDelay ? ` style="animation-delay:${popDelay.toFixed(3)}s"` : '';
       let pips = '';
       if (helpers && L > 0) pips = PIPS[L].map(([dx, dy]) => `<circle class="pip" cx="${s.x + dx}" cy="${s.y + dy}" r="2.8"/>`).join('');
       let rings = '';
       if (drag && i === drag.start) rings += `<circle class="ring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 6}" style="stroke:${PCOL[player]}"/>`;
       if (hintSpots && hintSpots.includes(i)) rings += `<circle class="hintring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 7}"/>`;
-      return `<g class="${cls}"><circle class="seed-body" cx="${s.x}" cy="${s.y}" r="${SPOT_R}"/>${pips}</g>${rings}`;
+      return `<g class="${cls}"${anim}><circle class="seed-body" cx="${s.x}" cy="${s.y}" r="${SPOT_R}"/>${pips}</g>${rings}`;
     }).join('');
     popIdx = -1;
     svg.setAttribute('aria-label', `Garden bed with ${spots.length} seeds and ${edges.length} vine pieces.`);
@@ -800,6 +859,8 @@
 
   function renderStatus() {
     const max = 3 * n - 1;
+    $('turnRing').style.stroke = PCOL[over ? winner : player];
+    if (over) svg.setAttribute('data-over', winner); else svg.removeAttribute('data-over');
     if (over) {
       $('turn').innerHTML = `<span class="chip" style="background:${PCOL[winner]}"></span>Player ${winner} wins!`;
       $('count').textContent = `${moveCount} moves`;
@@ -900,7 +961,7 @@
         e.pts[e.pts.length - 1] = { x: spots[e.b].x, y: spots[e.b].y };
       }
       log = []; moveCount = st.moveCount || 0; player = st.player || 1; over = false; winner = 0; overText = '';
-      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false; growFrom = -1;
       rebuildSegs(); analyze(); setMsg(defaultMsg()); render();
     },
   };

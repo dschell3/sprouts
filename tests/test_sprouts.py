@@ -24,8 +24,8 @@ class G:
     def box(self):
         return self.p.locator("#svg").bounding_box()
     def to_client(self, x, y):
-        b = self.box()
-        return b["x"] + (x + 10) / 520 * b["width"], b["y"] + (y + 10) / 520 * b["height"]
+        # map board units to client pixels with the SVG's own transform, so letterboxing is handled
+        return tuple(self.p.evaluate("([x, y]) => { const q = new DOMPoint(x, y).matrixTransform(document.getElementById('svg').getScreenCTM()); return [q.x, q.y]; }", [x, y]))
     def stroke(self, pts):
         pts = interp(pts)
         self.p.mouse.move(*self.to_client(*pts[0]))
@@ -152,6 +152,13 @@ with sync_playwright() as pw:
     g.stroke([A] + arc(250, 250, 100, 0, -math.pi)[1:])          # leaves A straight up
     g.stroke([(352, 225), (400, 190), (440, 250), (400, 340), (250, 370), (100, 300), B])
     check(g.st()["moves"] == 2, "stroke starting 2 units beside a vine accepted; msg=" + g.msg())
+
+    # --- Two vines started by touching the same spot on a seed must not "cross" at the stub ---
+    page.click("[data-seeds='2']")
+    T = (358, 250)                      # 8 units right of A's centre, inside the seed body
+    g.stroke([T] + arc(250, 250, 100, 0, -math.pi)[1:])
+    g.stroke([T] + arc(250, 250, 100, 0, math.pi)[1:])
+    check(g.st()["moves"] == 2, "second vine from the same touch spot accepted; msg=" + g.msg())
 
     # --- A tap on a seed is a gentle prompt, not an error ---
     page.click("[data-seeds='2']")
