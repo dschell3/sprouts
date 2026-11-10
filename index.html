@@ -779,7 +779,7 @@
 
   function renderLog() {
     $('log').innerHTML = log.map(item =>
-      `<li${item.n ? '' : ' style="list-style:none"'}><strong style="color:${PCOL[item.p]}">Player ${item.p}</strong> ${item.text}</li>`
+      `<li${item.n ? ` value="${item.n}"` : ' style="list-style:none"'}><strong style="color:${PCOL[item.p]}">Player ${item.p}</strong> ${item.text}</li>`
     ).join('');
     $('logEmpty').hidden = log.length > 0;
     const el = $('log');

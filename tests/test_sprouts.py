@@ -123,6 +123,11 @@ with sync_playwright() as pw:
     page.click("#btnHint")
     check(page.locator(".hintring").count() >= 1, f"hint rings shown: {page.locator('.hintring').count()}")
 
+    # Log numbering: the unnumbered "I'm stuck" line must not shift the next move's number
+    g.stroke([B] + arc(90, 250, 60, 0, 2 * math.pi)[1:])
+    nums = page.evaluate("[...document.querySelectorAll('#log li[value]')].map(li => li.value)")
+    check(g.st()["moves"] == 2 and nums == [1, 2], f"log numbers after a stuck claim: {nums}")
+
     # --- Out of bounds ---
     page.click("[data-mode='auto']")
     page.click("#btnNew")
