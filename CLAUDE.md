@@ -56,15 +56,15 @@ All coordinates are in **board units**: the bed is `B = 500` square (SVG viewBox
   - a loop on a seed with fewer than 2 lives.
 - `pickSplit()` places the new seed in the middle 30–70% of the vine, at the point with the most room. A spot needs `SEED_GAP_V` (16) from other vines and `SEED_GAP_S` (28) from other seeds; if no spot in the band qualifies, the move is rejected with "No room for a new seed on that vine.".
 
-**Region analysis (`analyze()`)** runs after every move. It is used for Auto end detection, Challenge checks and hints, and will be needed by the future computer opponent.
-1. Rasterize all vines onto a hidden canvas at 2× scale (`R = 1000`, line width 0.75 units).
-2. Flood-fill the empty pixels (4-connected) into region labels.
-3. For each edge, sample a point 4 units off **each side**, at a spot where no other vine is within 5 units. These give the regions on its left and right. In a planar drawing, each side of an edge belongs to exactly one face.
-4. A seed's regions are the union of the side regions of its incident edges. A seed with no vines uses the label at its centre.
+**Region analysis (`analyze()`)** runs after every move. It is used for Auto end detection, Challenge checks and hints, and will be needed by the future computer opponent. It answers "where could a vine still be drawn?" using the same rules the drawing code enforces, so a face that is topologically open but too cramped to draw in counts as closed.
+1. Rasterize all vines onto a hidden canvas at 2× scale (`R = 1000`) as walls `2 * CLEAR` wide. Inside `FULL_CLEAR_R` of a seed redraw them `2 * clearanceAt(MID_R)` wide, and inside `MID_R` 0.75 wide, so the raster is a step-under-approximation of the clearance ramp: it never demands more room than the drawing rules do.
+2. Fill a disc of `CAPTURE_R` around every seed (a vine that gets that close finishes there) and the `MARGIN` strip around the bed.
+3. Flood-fill the free pixels (4-connected) into region labels.
+4. The regions a seed touches are the labels found on a ring of radius `RING_R` (`CAPTURE_R + 2`) around it, sampled at 72 angles.
 5. A move exists if some region's bordering seeds have **total lives ≥ 2**: either two seeds with a life each, or one seed with 2 lives for a loop.
 
-Why raster: the same flood fill works on a torus or Klein bottle by wrapping neighbours across edges.
-Known weak spot: in very cramped drawings, a face could be missed, which would cause a false "game over". The clearance rules exist to prevent this. If tuning clearance, keep the raster gap ≥ ~2px.
+Why raster: the same flood fill works on a torus or Klein bottle by wrapping neighbours across edges, and the ring sampling wraps with it.
+Known slack: the raster under-approximates the clearance ramp near seeds and does not check that a loop has room to reach `ARM_R`, so it can still say "a move exists" for a face a careful player cannot use. It should never end a game early.
 
 **Test hook:** `window.__sprouts.state()` exposes state for tests, and `window.__sprouts.load({spots, edges})` replaces the board with a hand-built position (seeds `{x, y, deg}`, edges `{a, b, pts}`; vine ends are snapped to their seeds). Keep both.
 

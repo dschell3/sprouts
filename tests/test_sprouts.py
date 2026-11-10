@@ -186,6 +186,21 @@ with sync_playwright() as pw:
     g.stroke([(100, 250), (400, 250)])
     check(g.st()["moves"] == 1, "same vine with room accepted; msg=" + g.msg())
 
+    # --- Analysis matches the drawing rules: a doorway too narrow to draw through is closed ---
+    def two_rooms(door):
+        # P in the left room and Q in the right, split by a wall of full seeds with a gap of `door`
+        sp = [seed(100, 250, 2), seed(400, 250, 2), seed(250, 24, 3), seed(250, 250 - door / 2, 3),
+              seed(250, 250 + door / 2, 3), seed(250, 476, 3)]
+        return sp, [edge(2, 3, [(250, 24), (250, 250 - door / 2)]), edge(4, 5, [(250, 250 + door / 2), (250, 476)])]
+    g.load(*two_rooms(36))      # the two door posts' capture discs overlap: nothing fits
+    s = g.st()
+    check(not s["movable"], f"36-unit doorway between full seeds counts as closed: movable={s['movable']} regions={s['regions']}")
+    g.load(*two_rooms(80))
+    s = g.st()
+    check(s["movable"] and sorted(s["hint"]) == [0, 1], f"80-unit doorway is open: movable={s['movable']} hint={s['hint']}")
+    g.stroke([(100, 250), (400, 250)])
+    check(g.st()["moves"] == 1, "and a vine really can be drawn through it; msg=" + g.msg())
+
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
     check(len(g.st()["spots"]) == 8, "8 seeds")
