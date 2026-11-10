@@ -124,6 +124,12 @@
   }
   .btn.solid { background: var(--solid); color: var(--solid-ink); border-color: var(--solid); }
   .btn[hidden] { display: none; }
+  .quiet {
+    display: block; margin: 4px auto 0; min-height: 38px; padding: 8px 12px;
+    font: inherit; font-size: 0.85rem; color: var(--muted); background: none; border: none;
+    text-decoration: underline; cursor: pointer;
+  }
+  .quiet[hidden] { display: none; }
   .btn:focus-visible, .pill:focus-visible { outline: 3px solid var(--p1); outline-offset: 2px; }
 
   .row { margin-bottom: 12px; }
@@ -198,6 +204,7 @@
         <button class="btn" id="btnHint" hidden>Show a hint</button>
         <button class="btn solid" id="btnNew">New game</button>
       </div>
+      <button class="quiet" id="btnGiveUp" hidden>Give up</button>
     </section>
 
     <aside>
@@ -295,11 +302,13 @@
   const CAPTURE_R = 20;     // reaching this close to a seed finishes the vine
   const ARM_R = 36;         // must get this far from the start seed before a loop can close
   const NO_CLEAR_R = 14;    // inside this radius of a seed, vines may touch closely
-  const ZONE_R = 32;        // inside this radius of a seed, a smaller gap is allowed
+  const FULL_CLEAR_R = 60;  // the required gap ramps up from 0 to CLEAR between NO_CLEAR_R and here
   const CLEAR = 7;          // normal minimum gap between vines
-  const CLEAR_NEAR = 4;     // minimum gap near seeds
   const STEP = 2.5;         // spacing of recorded stroke points
   const MARGIN = 4;         // vines must stay this far inside the bed
+  const TAP_LEN = 12;       // a stroke shorter than this is a tap, not a failed vine
+  const SEED_GAP_V = SPOT_R + 2;   // a new seed needs this much room from other vines
+  const SEED_GAP_S = 2 * SPOT_R;   // and this much from other seeds, so seeds never overlap
 
   const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
   const $ = id => document.getElementById(id);
@@ -316,7 +325,7 @@
   let spots = [], edges = [], segs = [], log = [];
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
-  let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false;
+  let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false, giveUpArmed = 0;
   const scores = {};
   for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
 
@@ -383,6 +392,7 @@
     edges = []; segs = []; log = [];
     moveCount = 0; player = 1; over = false; winner = 0; overText = '';
     hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+    clearTimeout(giveUpArmed); giveUpArmed = 0;
     analyze();
     setMsg(defaultMsg());
     render();
@@ -442,14 +452,19 @@
 
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
-    const bad = drag.invalid;
+    const bad = drag.invalid, len = drag.cum[drag.cum.length - 1];
     drag = null;
     renderStroke(); renderSpots();
     if (bad) setMsg(bad + ' Try again.', true);
+    else if (len < TAP_LEN) setMsg('Drag, don’t tap. Pull the vine from a seed to another seed.');
     else setMsg('Finish your vine on a seed, or loop back to the same seed.', true);
   }
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
+  // If the browser takes the pointer away mid-stroke (a system gesture, a second finger), end the
+  // stroke instead of leaving the board stuck waiting for a pointerup that never comes.
+  svg.addEventListener('lostpointercapture', endDrag);
+  svg.addEventListener('contextmenu', e => e.preventDefault());   // long-press menu on Android
 
   function addPoint(q) {
     const last = drag.pts[drag.pts.length - 1];
@@ -485,12 +500,17 @@
     setMsg(reason, true);
   }
 
+  // Vines must keep CLEAR apart, except near seeds, where they all converge anyway. The gap needed
+  // ramps up with distance from the nearest seed, so a stroke that starts beside an existing vine
+  // can still peel away from it.
+  function clearanceAt(m) {
+    if (m < NO_CLEAR_R) return 0;
+    return CLEAR * Math.min(1, (m - NO_CLEAR_R) / (FULL_CLEAR_R - NO_CLEAR_R));
+  }
   function clearanceNeeded(p) {
     let m = Infinity;
     for (const s of spots) m = Math.min(m, dist(p, s));
-    if (m < NO_CLEAR_R) return 0;
-    if (m < ZONE_R) return CLEAR_NEAR;
-    return CLEAR;
+    return clearanceAt(m);
   }
 
   function checkPoint(a, b) {
@@ -516,7 +536,7 @@
     const d = drag, s = spots[i];
     if (i === d.start) {
       if (lives(s) < 2) { fail('A loop needs 2 free shoots on its seed.'); return; }
-    } else if (lives(s) <= 0) { fail('That seed is full. It already has 3 vines.'); return; }
+    } else if (lives(s) <= 0) { fail('Your vine touched a full seed. Go around it.'); return; }
     const a = d.pts[d.pts.length - 1], b = { x: s.x, y: s.y };
     for (const sg of segs) if (segX(a.x, a.y, b.x, b.y, sg[0], sg[1], sg[2], sg[3])) { fail('Vines can’t cross each other.'); return; }
     const P = d.pts;
@@ -527,7 +547,9 @@
     commit(i);
   }
 
-  // Place the new seed near the middle of the vine, at the roomiest spot.
+  // Place the new seed near the middle of the vine, at the roomiest spot. Returns -1 when no spot
+  // in the middle 30-70% of the vine has room for a seed: at least SEED_GAP_V from other vines and
+  // SEED_GAP_S from other seeds.
   function pickSplit(P) {
     const cum = [0];
     for (let k = 1; k < P.length; k++) cum.push(cum[k - 1] + dist(P[k], P[k - 1]));
@@ -545,18 +567,19 @@
       }
       let ds = Infinity;
       for (const s of spots) ds = Math.min(ds, dist(p, s));
+      if (de < SEED_GAP_V || ds < SEED_GAP_S) continue;
       const score = Math.min(de, ds * 0.6, 40) - Math.abs(t - 0.5) * 20;
       if (score > best) { best = score; bestK = k; }
     }
-    if (bestK < 0) bestK = Math.max(1, Math.min(P.length - 2, Math.floor(P.length / 2)));
     return bestK;
   }
 
   function commit(target) {
     const d = drag;
-    drag = null;
     const P = d.pts;
     const k = pickSplit(P);
+    if (k < 0) { fail('No room for a new seed on that vine.'); return; }
+    drag = null;
     const ns = { x: P[k].x, y: P[k].y, deg: 2 };
     spots.push(ns);
     const ni = spots.length - 1;
@@ -583,63 +606,58 @@
   }
 
   // ---- Region analysis ----
-  // Draw every vine onto a hidden grid, flood-fill the gaps into regions, then work out which
-  // regions each seed touches. A move exists if some region has 2+ free shoots on its border.
+  // Draw every vine onto a hidden grid as a wall as wide as the clearance rule demands, so two
+  // vines too close for a third to pass between them merge into one wall. Every seed becomes a disc
+  // of CAPTURE_R (a vine that gets that close finishes there), and the bed margin is a wall too.
+  // Flood-fill the free pixels into regions. The regions a seed touches are the labels found on a
+  // ring just outside its disc. A move exists if some region has 2+ free shoots on its border.
+  // The raster never demands more room than the drawing rules do, so if it says a face is closed,
+  // no vine can be drawn through it either.
+  const RING_R = CAPTURE_R + 2;
+  const MID_R = (NO_CLEAR_R + FULL_CLEAR_R) / 2;
   function labelAt(x, y) {
     const ix = Math.min(R - 1, Math.max(0, Math.floor(x * S)));
     const iy = Math.min(R - 1, Math.max(0, Math.floor(y * S)));
     return lab[iy * R + ix];
   }
-  function minDistOther(x, y, ei, limit) {
-    let m = Infinity;
-    for (const s of segs) {
-      if (s[4] === ei) continue;
-      const d = dSeg(x, y, s[0], s[1], s[2], s[3]);
-      if (d < m) { m = d; if (m < limit) return m; }
-    }
-    return m;
-  }
-  // The regions on either side of an edge, sampled just off the vine where nothing else is near.
-  function edgeSides(e, ei) {
-    let P = e.pts;
-    if (P.length < 3) {
-      const a = P[0], b = P[P.length - 1];
-      P = [];
-      for (let t = 0; t <= 8; t++) P.push({ x: a.x + (b.x - a.x) * t / 8, y: a.y + (b.y - a.y) * t / 8 });
-    }
-    const m = P.length, mid = (m - 1) / 2, order = [];
-    for (let k = 1; k < m - 1; k++) order.push(k);
-    order.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid));
-    const found = new Set();
-    for (const k of order) {
-      const tx = P[k + 1].x - P[k - 1].x, ty = P[k + 1].y - P[k - 1].y, len = Math.hypot(tx, ty);
-      if (len < 1e-6) continue;
-      const nx = -ty / len, ny = tx / len;
-      let got = 0;
-      for (const sg of [1, -1]) {
-        const sx = P[k].x + nx * 4 * sg, sy = P[k].y + ny * 4 * sg;
-        if (sx < 0 || sy < 0 || sx >= B || sy >= B) continue;
-        const l = labelAt(sx, sy);
-        if (l < 0) continue;
-        if (minDistOther(sx, sy, ei, 5) < 5) continue;
-        found.add(l); got++;
-      }
-      if (got === 2 || found.size === 2) break;
-    }
-    return [...found];
-  }
-
-  function analyze() {
-    rctx.setTransform(1, 0, 0, 1, 0, 0);
-    rctx.clearRect(0, 0, R, R);
-    rctx.setTransform(S, 0, 0, S, 0, 0);
-    rctx.lineWidth = 0.75; rctx.lineCap = 'round'; rctx.lineJoin = 'round'; rctx.strokeStyle = '#000';
+  function strokeVines(width) {
+    rctx.lineWidth = width;
     for (const e of edges) {
       rctx.beginPath();
       rctx.moveTo(e.pts[0].x, e.pts[0].y);
       for (let k = 1; k < e.pts.length; k++) rctx.lineTo(e.pts[k].x, e.pts[k].y);
       rctx.stroke();
     }
+  }
+  function seedDiscs(r) {
+    rctx.beginPath();
+    for (const s of spots) { rctx.moveTo(s.x + r, s.y); rctx.arc(s.x, s.y, r, 0, 2 * Math.PI); }
+  }
+  // Near seeds the rule asks for less room, so inside radius r redraw the vines thinner.
+  function thinNearSeeds(r, width) {
+    rctx.save();
+    rctx.globalCompositeOperation = 'destination-out';
+    seedDiscs(r); rctx.fill();
+    rctx.restore();
+    rctx.save();
+    seedDiscs(r); rctx.clip();
+    strokeVines(width);
+    rctx.restore();
+  }
+
+  function analyze() {
+    rctx.setTransform(1, 0, 0, 1, 0, 0);
+    rctx.clearRect(0, 0, R, R);
+    rctx.setTransform(S, 0, 0, S, 0, 0);
+    rctx.globalCompositeOperation = 'source-over';
+    rctx.lineCap = 'round'; rctx.lineJoin = 'round'; rctx.strokeStyle = '#000'; rctx.fillStyle = '#000';
+    strokeVines(2 * CLEAR);
+    thinNearSeeds(FULL_CLEAR_R, 2 * clearanceAt(MID_R));
+    thinNearSeeds(MID_R, 0.75);
+    seedDiscs(CAPTURE_R); rctx.fill();
+    rctx.fillRect(0, 0, B, MARGIN); rctx.fillRect(0, B - MARGIN, B, MARGIN);
+    rctx.fillRect(0, 0, MARGIN, B); rctx.fillRect(B - MARGIN, 0, MARGIN, B);
+
     const img = rctx.getImageData(0, 0, R, R).data;
     const N = R * R;
     for (let i = 0; i < N; i++) lab[i] = img[i * 4 + 3] > 0 ? -2 : -1;
@@ -657,11 +675,13 @@
       }
       nl++;
     }
-    const sides = edges.map((e, ei) => edgeSides(e, ei));
-    const regionsOf = spots.map((s, i) => {
-      if (s.deg === 0) { const l = labelAt(s.x, s.y); return l >= 0 ? [l] : []; }
+    const regionsOf = spots.map(s => {
       const set = new Set();
-      edges.forEach((e, ei) => { if (e.a === i || e.b === i) sides[ei].forEach(l => set.add(l)); });
+      for (let k = 0; k < 72; k++) {
+        const a = k * Math.PI / 36;
+        const l = labelAt(s.x + RING_R * Math.cos(a), s.y + RING_R * Math.sin(a));
+        if (l >= 0) set.add(l);
+      }
       return [...set];
     });
     const sum = new Map(), members = new Map();
@@ -698,6 +718,21 @@
       log.push({ n: null, p: player, text: 'said "I\'m stuck" and was right' });
       endGame(w, `Player ${player} has no legal move. Player ${w} made the last move.`);
     }
+    render();
+  }
+
+  // Giving up takes two taps a few seconds apart, so a stray tap can't end the game.
+  function giveUp() {
+    if (over || drag || moveCount === 0) return;
+    if (!giveUpArmed) {
+      giveUpArmed = setTimeout(() => { giveUpArmed = 0; renderControls(); }, 4000);
+      renderControls();
+      return;
+    }
+    clearTimeout(giveUpArmed); giveUpArmed = 0;
+    const w = 3 - player;
+    log.push({ n: null, p: player, text: 'gave up' });
+    endGame(w, `Player ${player} gave up. Player ${w} wins.`);
     render();
   }
 
@@ -766,6 +801,8 @@
     $('btnStuck').hidden = mode !== 'challenge' || over;
     $('btnHint').hidden = !showHintBtn || over;
     $('btnNew').textContent = over ? 'Play again' : 'New game';
+    $('btnGiveUp').hidden = over || moveCount === 0;
+    $('btnGiveUp').textContent = giveUpArmed ? 'Really give up? Tap again.' : 'Give up';
   }
 
   function renderSettings() {
@@ -779,7 +816,7 @@
 
   function renderLog() {
     $('log').innerHTML = log.map(item =>
-      `<li${item.n ? '' : ' style="list-style:none"'}><strong style="color:${PCOL[item.p]}">Player ${item.p}</strong> ${item.text}</li>`
+      `<li${item.n ? ` value="${item.n}"` : ' style="list-style:none"'}><strong style="color:${PCOL[item.p]}">Player ${item.p}</strong> ${item.text}</li>`
     ).join('');
     $('logEmpty').hidden = log.length > 0;
     const el = $('log');
@@ -826,10 +863,25 @@
   }));
   $('btnStuck').addEventListener('click', stuck);
   $('btnHint').addEventListener('click', showHint);
+  $('btnGiveUp').addEventListener('click', giveUp);
   $('btnNew').addEventListener('click', newGame);
 
-  // Small hook for automated testing; harmless in normal play.
-  window.__sprouts = { state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode }) };
+  // Small hook for automated testing; harmless in normal play. load() replaces the board with a
+  // hand-built position so tests can check analysis and placement without drawing every vine.
+  window.__sprouts = {
+    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode }),
+    load: st => {
+      spots = st.spots.map(s => ({ x: s.x, y: s.y, deg: s.deg }));
+      edges = st.edges.map(e => ({ a: e.a, b: e.b, player: e.player || 1, pts: e.pts.map(p => ({ x: p.x, y: p.y })) }));
+      for (const e of edges) {   // vine ends must share the seed's exact coordinates
+        e.pts[0] = { x: spots[e.a].x, y: spots[e.a].y };
+        e.pts[e.pts.length - 1] = { x: spots[e.b].x, y: spots[e.b].y };
+      }
+      log = []; moveCount = st.moveCount || 0; player = st.player || 1; over = false; winner = 0; overText = '';
+      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+      rebuildSegs(); analyze(); setMsg(defaultMsg()); render();
+    },
+  };
 
   newGame();
 })();
