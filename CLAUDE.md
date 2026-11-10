@@ -36,6 +36,7 @@ Keep the game as **one self-contained `index.html`**: no build step, no framewor
 - A small **"Give up"** link under the controls (two taps to confirm) hands the win to the other player. It can be removed if it proves unwanted.
 - **No persistence.** Scores and settings live only for the page session.
 - Player names stay "Player 1" / "Player 2". Colors: P1 green, P2 terracotta.
+- The side cards fold: Move log and Scoreboard start collapsed everywhere, Settings starts collapsed on phones (≤840px) and open on desktop.
 - **Theme:** garden/greenhouse (seeds, vines, soil bed, wooden frame), styled like the owner's earlier "Coffee Shop Expedition" game: cards, pills, a move log, a scoreboard, and "How to play" details. Light and dark mode via CSS variables. The backup theme idea is retro arcade / Pac-Man (wraparound fits the torus).
 - Owner's writing style for UI text: simple, short sentences.
 
@@ -56,13 +57,13 @@ All coordinates are in **board units**: the bed is `B = 500` square (SVG viewBox
   - clearance: vines must stay `CLEAR` (7) apart. The gap needed is 0 within `NO_CLEAR_R` (14) of a seed and ramps up linearly to `CLEAR` at `FULL_CLEAR_R` (60), so vines can converge on a seed and a stroke can start beside an existing vine;
   - a full target seed;
   - a loop on a seed with fewer than 2 lives.
-- `pickSplit()` places the new seed in the middle 30–70% of the vine, at the point with the most room. A spot needs `SEED_GAP_V` (16) from other vines and `SEED_GAP_S` (28) from other seeds; if no spot in the band qualifies, the move is rejected with "No room for a new seed on that vine.".
+- `pickSplit()` places the new seed in the middle 30–70% of the vine, at the point with the most room. A spot needs `SEED_GAP_V` (22, just past `CAPTURE_R`) from other vines and `SEED_GAP_S` (28) from other seeds; if no spot in the band qualifies, the move is rejected with "No room for a new seed on that vine.".
 
 **Region analysis (`analyze()`)** runs after every move. It is used for Auto end detection, Challenge checks and hints, and will be needed by the future computer opponent. It answers "where could a vine still be drawn?" using the same rules the drawing code enforces, so a face that is topologically open but too cramped to draw in counts as closed.
 1. Rasterize all vines onto a hidden canvas at 2× scale (`R = 1000`) as walls `2 * CLEAR` wide. Inside `FULL_CLEAR_R` of a seed redraw them `2 * clearanceAt(MID_R)` wide, and inside `MID_R` 0.75 wide, so the raster is a step-under-approximation of the clearance ramp: it never demands more room than the drawing rules do.
-2. Fill a disc of `CAPTURE_R` around every seed (a vine that gets that close finishes there) and the `MARGIN` strip around the bed.
+2. Fill a disc of `DISC_R` (`CAPTURE_R − 2`) around every seed (a vine that gets within `CAPTURE_R` finishes there) and the `MARGIN` strip around the bed.
 3. Flood-fill the free pixels (4-connected) into region labels.
-4. The regions a seed touches are the labels found on a ring of radius `RING_R` (`CAPTURE_R + 2`) around it, sampled at 72 angles.
+4. The regions a seed touches: walk outward from its centre at 72 angles, from just inside the disc to `RING_R` (`CAPTURE_R + 2`), and take the first free pixel on each ray. That pixel lies between the disc and any passing vine, so a vine skimming the seed never credits it with the face beyond. This relies on no vine running inside the disc: new vines keep `CAPTURE_R` away (they would finish there) and new seeds keep `SEED_GAP_V` from vines.
 5. A move exists if some region's bordering seeds have **total lives ≥ 2**: either two seeds with a life each, or one seed with 2 lives for a loop.
 
 Why raster: the same flood fill works on a torus or Klein bottle by wrapping neighbours across edges, and the ring sampling wraps with it.

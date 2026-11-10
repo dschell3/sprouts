@@ -77,6 +77,14 @@
   }
   @media (max-width: 520px) { .board-card { padding: 10px; } }
   h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
+  /* Side cards fold up: the heading is the summary */
+  .fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; min-height: 24px; }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); margin-left: 2px; transition: transform .15s; }
+  .fold[open] > summary::before { transform: rotate(45deg); }
+  .fold > summary h2 { margin: 0; }
+  .fold[open] > summary { margin-bottom: 10px; }
+  @media (prefers-reduced-motion: reduce) { .fold > summary::before { transition: none; } }
 
   .status { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
   .turn { display: flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: 700; }
@@ -209,7 +217,8 @@
 
     <aside>
       <section class="card">
-        <h2>Settings</h2>
+        <details class="fold" id="settingsFold" open>
+        <summary><h2>Settings</h2></summary>
         <div class="row">
           <p class="row-label">Starting seeds</p>
           <div class="pills" id="seedPills" role="group" aria-label="Starting seeds"></div>
@@ -238,20 +247,25 @@
             <button class="pill" disabled title="Coming soon">Klein bottle <small>(soon)</small></button>
           </div>
         </div>
+        </details>
       </section>
 
       <section class="card">
-        <h2>Move log</h2>
+        <details class="fold" id="logFold">
+        <summary><h2>Move log</h2></summary>
         <ol id="log"></ol>
         <p class="muted" id="logEmpty">No moves yet. Player 1 goes first.</p>
+        </details>
       </section>
 
       <section class="card">
-        <h2>Scoreboard</h2>
+        <details class="fold">
+        <summary><h2>Scoreboard</h2></summary>
         <table>
           <thead><tr><th>Seeds</th><th>Games</th><th>P1 wins</th><th>P2 wins</th></tr></thead>
           <tbody id="scores"></tbody>
         </table>
+        </details>
       </section>
 
       <section class="card">
@@ -307,7 +321,8 @@
   const STEP = 2.5;         // spacing of recorded stroke points
   const MARGIN = 4;         // vines must stay this far inside the bed
   const TAP_LEN = 12;       // a stroke shorter than this is a tap, not a failed vine
-  const SEED_GAP_V = SPOT_R + 2;   // a new seed needs this much room from other vines
+  const SEED_GAP_V = CAPTURE_R + 2; // a new seed needs this much room from other vines, so no vine ever
+                                    // runs inside a seed's capture disc (analysis relies on this)
   const SEED_GAP_S = 2 * SPOT_R;   // and this much from other seeds, so seeds never overlap
 
   const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
@@ -608,11 +623,13 @@
   // ---- Region analysis ----
   // Draw every vine onto a hidden grid as a wall as wide as the clearance rule demands, so two
   // vines too close for a third to pass between them merge into one wall. Every seed becomes a disc
-  // of CAPTURE_R (a vine that gets that close finishes there), and the bed margin is a wall too.
-  // Flood-fill the free pixels into regions. The regions a seed touches are the labels found on a
-  // ring just outside its disc. A move exists if some region has 2+ free shoots on its border.
+  // of DISC_R (a vine that gets within CAPTURE_R finishes there), and the bed margin is a wall too.
+  // Flood-fill the free pixels into regions. The regions a seed touches are found by walking
+  // outward from its centre in every direction and taking the first free pixel, which lies between
+  // the disc and anything else. A move exists if some region has 2+ free shoots on its border.
   // The raster never demands more room than the drawing rules do, so if it says a face is closed,
   // no vine can be drawn through it either.
+  const DISC_R = CAPTURE_R - 2;
   const RING_R = CAPTURE_R + 2;
   const MID_R = (NO_CLEAR_R + FULL_CLEAR_R) / 2;
   function labelAt(x, y) {
@@ -654,7 +671,7 @@
     strokeVines(2 * CLEAR);
     thinNearSeeds(FULL_CLEAR_R, 2 * clearanceAt(MID_R));
     thinNearSeeds(MID_R, 0.75);
-    seedDiscs(CAPTURE_R); rctx.fill();
+    seedDiscs(DISC_R); rctx.fill();
     rctx.fillRect(0, 0, B, MARGIN); rctx.fillRect(0, B - MARGIN, B, MARGIN);
     rctx.fillRect(0, 0, MARGIN, B); rctx.fillRect(B - MARGIN, 0, MARGIN, B);
 
@@ -678,9 +695,11 @@
     const regionsOf = spots.map(s => {
       const set = new Set();
       for (let k = 0; k < 72; k++) {
-        const a = k * Math.PI / 36;
-        const l = labelAt(s.x + RING_R * Math.cos(a), s.y + RING_R * Math.sin(a));
-        if (l >= 0) set.add(l);
+        const a = k * Math.PI / 36, cx = Math.cos(a), cy = Math.sin(a);
+        for (let r = DISC_R - 1; r <= RING_R; r += 0.5) {
+          const l = labelAt(s.x + r * cx, s.y + r * cy);
+          if (l >= 0) { set.add(l); break; }
+        }
       }
       return [...set];
     });
@@ -864,6 +883,9 @@
   $('btnStuck').addEventListener('click', stuck);
   $('btnHint').addEventListener('click', showHint);
   $('btnGiveUp').addEventListener('click', giveUp);
+  // On phones the settings fold up too, so the board comes first.
+  if (window.matchMedia('(max-width: 840px)').matches) $('settingsFold').open = false;
+  $('logFold').addEventListener('toggle', () => { const el = $('log'); el.scrollTop = el.scrollHeight; });
   $('btnNew').addEventListener('click', newGame);
 
   // Small hook for automated testing; harmless in normal play. load() replaces the board with a
