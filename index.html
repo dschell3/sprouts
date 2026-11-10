@@ -114,6 +114,7 @@
   .frame { fill: var(--frame); }
   .bed { fill: var(--bed); }
   .speck { fill: var(--speck); }
+  #turnRing { fill: none; stroke-width: 4; transition: stroke .35s; }
   .vine { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
   .vine-hi { fill: none; stroke: #ffffff; stroke-opacity: .3; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
   .stroke { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
@@ -224,6 +225,7 @@
         <rect class="frame" x="-6" y="-6" width="512" height="512" rx="8"/>
         <rect class="bed" x="0" y="0" width="500" height="500"/>
         <rect x="0" y="0" width="500" height="500" fill="url(#soil)"/>
+        <rect id="turnRing" x="2" y="2" width="496" height="496"/>
         <g id="gEdges"></g>
         <path id="stroke" class="stroke" d=""/>
         <g id="gSpots"></g>
@@ -843,6 +845,7 @@
 
   function renderStatus() {
     const max = 3 * n - 1;
+    $('turnRing').style.stroke = PCOL[over ? winner : player];
     if (over) {
       $('turn').innerHTML = `<span class="chip" style="background:${PCOL[winner]}"></span>Player ${winner} wins!`;
       $('count').textContent = `${moveCount} moves`;
