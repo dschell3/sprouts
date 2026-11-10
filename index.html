@@ -111,10 +111,13 @@
   .pip { fill: var(--pip); }
   .ring { fill: none; stroke-width: 3; stroke-dasharray: 4 4; }
   .hintring { fill: none; stroke: var(--hint); stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-  .pop { animation: pop .5s cubic-bezier(.3,1.6,.6,1); transform-box: fill-box; transform-origin: center; }
+  .pop { animation: pop .5s cubic-bezier(.3,1.6,.6,1) both; transform-box: fill-box; transform-origin: center; }
+  /* A new vine draws itself from the start seed; the second half waits for the first */
+  .grow { animation: grow linear both; }
+  @keyframes grow { to { stroke-dashoffset: 0; } }
   @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
   @keyframes pulse { 0%,100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.25); opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .hintring, .pop { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .hintring, .pop, .grow { animation: none; } .grow { stroke-dashoffset: 0 !important; } }
 
   .msg { color: var(--muted); font-size: 0.92rem; margin: 8px 0 0; text-align: center; min-height: 1.4em; }
   .msg.bad { color: var(--bad); font-weight: 600; }
@@ -341,6 +344,8 @@
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
   let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false, giveUpArmed = 0;
+  let growFrom = -1, popDelay = 0;   // edges from this index on animate in; the new seed pops after the first half
+  const GROW_SPEED = 900;            // board units per second
   const scores = {};
   for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
 
@@ -406,7 +411,7 @@
     spots = layout(n);
     edges = []; segs = []; log = [];
     moveCount = 0; player = 1; over = false; winner = 0; overText = '';
-    hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+    hintSpots = null; popIdx = -1; drag = null; showHintBtn = false; growFrom = -1;
     clearTimeout(giveUpArmed); giveUpArmed = 0;
     analyze();
     setMsg(defaultMsg());
@@ -606,6 +611,7 @@
     const loop = d.start === target;
     log.push({ n: moveCount, p: player, text: loop ? 'looped a vine back to one seed' : 'joined two seeds' });
     popIdx = ni;
+    growFrom = edges.length - 2;
     showHintBtn = false;
     hintSpots = null;
     rebuildSegs();
@@ -768,11 +774,27 @@
     return 'M' + P.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' L');
   }
 
+  function pathLen(P) {
+    let L = 0;
+    for (let k = 1; k < P.length; k++) L += dist(P[k], P[k - 1]);
+    return L;
+  }
   function renderEdges() {
-    gEdges.innerHTML = edges.map(e => {
+    let delay = 0;
+    popDelay = 0;
+    gEdges.innerHTML = edges.map((e, ei) => {
       const d = pathD(e.pts);
-      return `<path class="vine" d="${d}" style="stroke:${PCOL[e.player]}"/><path class="vine-hi" d="${d}"/>`;
+      let cls = 'vine', hi = 'vine-hi', anim = '';
+      if (growFrom >= 0 && ei >= growFrom) {
+        const L = pathLen(e.pts), dur = L / GROW_SPEED;
+        cls += ' grow'; hi += ' grow';
+        anim = `stroke-dasharray:${L.toFixed(1)};stroke-dashoffset:${L.toFixed(1)};animation-duration:${dur.toFixed(3)}s;animation-delay:${delay.toFixed(3)}s;`;
+        if (ei === growFrom) popDelay = dur;
+        delay += dur;
+      }
+      return `<path class="${cls}" d="${d}" style="stroke:${PCOL[e.player]};${anim}"/><path class="${hi}" d="${d}" style="${anim}"/>`;
     }).join('');
+    growFrom = -1;
   }
 
   function renderStroke() {
@@ -787,12 +809,13 @@
     gSpots.innerHTML = spots.map((s, i) => {
       const L = lives(s);
       const cls = 'seed' + (helpers && L <= 0 ? ' wilt' : '') + (i === popIdx ? ' pop' : '');
+      const anim = i === popIdx && popDelay ? ` style="animation-delay:${popDelay.toFixed(3)}s"` : '';
       let pips = '';
       if (helpers && L > 0) pips = PIPS[L].map(([dx, dy]) => `<circle class="pip" cx="${s.x + dx}" cy="${s.y + dy}" r="2.8"/>`).join('');
       let rings = '';
       if (drag && i === drag.start) rings += `<circle class="ring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 6}" style="stroke:${PCOL[player]}"/>`;
       if (hintSpots && hintSpots.includes(i)) rings += `<circle class="hintring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 7}"/>`;
-      return `<g class="${cls}"><circle class="seed-body" cx="${s.x}" cy="${s.y}" r="${SPOT_R}"/>${pips}</g>${rings}`;
+      return `<g class="${cls}"${anim}><circle class="seed-body" cx="${s.x}" cy="${s.y}" r="${SPOT_R}"/>${pips}</g>${rings}`;
     }).join('');
     popIdx = -1;
     svg.setAttribute('aria-label', `Garden bed with ${spots.length} seeds and ${edges.length} vine pieces.`);
@@ -900,7 +923,7 @@
         e.pts[e.pts.length - 1] = { x: spots[e.b].x, y: spots[e.b].y };
       }
       log = []; moveCount = st.moveCount || 0; player = st.player || 1; over = false; winner = 0; overText = '';
-      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false; growFrom = -1;
       rebuildSegs(); analyze(); setMsg(defaultMsg()); render();
     },
   };
