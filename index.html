@@ -115,10 +115,13 @@
   .bed { fill: var(--bed); }
   .speck { fill: var(--speck); }
   #turnRing { fill: none; stroke-width: 4; transition: stroke .35s; }
+  .seams { fill: var(--bed); stroke: var(--frame); stroke-width: 0.6; }
   .vine { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
   .vine-hi { fill: none; stroke: #ffffff; stroke-opacity: .3; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
   .stroke { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
   .stroke.bad { stroke: var(--bad) !important; stroke-dasharray: 6 5; opacity: .95; }
+  .stroke.waiting { stroke-dasharray: 8 6; opacity: .55; }
+  .pickup { fill: none; stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .seed-body { fill: url(#seedFill); stroke: var(--ring); stroke-width: 2.5; }
   .wilt .seed-body { fill: url(#wiltFill); }
   .pip { fill: var(--pip); }
@@ -139,7 +142,7 @@
   @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
   @keyframes pulse { 0%,100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.25); opacity: 1; } }
   @media (prefers-reduced-motion: reduce) {
-    .hintring, .pop, .grow { animation: none; } .grow { stroke-dashoffset: 0 !important; }
+    .hintring, .pop, .grow, .pickup { animation: none; } .grow { stroke-dashoffset: 0 !important; }
     .vine { transition: none; } #svg[data-over] .pip { animation: none; opacity: 0; }
   }
 
@@ -237,8 +240,10 @@
         <rect class="bed" x="0" y="0" width="500" height="500"/>
         <rect x="0" y="0" width="500" height="500" fill="url(#soil)"/>
         <rect id="turnRing" x="2" y="2" width="496" height="496"/>
+        <g id="gSeams" class="seams"></g>
         <g id="gEdges"></g>
         <path id="stroke" class="stroke" d=""/>
+        <g id="gPending"></g>
         <g id="gSpots"></g>
       </svg>
       <p class="msg" id="msg" aria-live="polite"></p>
@@ -278,10 +283,11 @@
         <div class="row">
           <p class="row-label">Surface</p>
           <div class="pills" role="group" aria-label="Surface">
-            <button class="pill" aria-pressed="true">Square</button>
-            <button class="pill" disabled title="Coming soon">Torus <small>(soon)</small></button>
-            <button class="pill" disabled title="Coming soon">Klein bottle <small>(soon)</small></button>
+            <button class="pill" data-surface="square">Square</button>
+            <button class="pill" data-surface="torus">Torus</button>
+            <button class="pill" data-surface="klein">Klein bottle</button>
           </div>
+          <p class="note" id="surfaceNote"></p>
         </div>
         </details>
       </section>
@@ -328,8 +334,9 @@
           <ul>
             <li>Each seed starts with 3 free shoots. A move uses 2 shoots, and the new seed brings 1. So every move removes exactly 1 shoot from the garden.</li>
             <li>That means a game with <em>n</em> seeds lasts at most 3<em>n</em> − 1 moves. Why not 3<em>n</em>? Look at the last seed that sprouts.</li>
-            <li>A game also always lasts at least 2<em>n</em> moves.</li>
-            <li>With perfect play, Player 1 seems to win exactly when <em>n</em> leaves a remainder of 3, 4 or 5 when divided by 6. Computers have checked this for many values of <em>n</em>, but nobody has proved it yet.</li>
+            <li>On the flat square, a game also always lasts at least 2<em>n</em> moves.</li>
+            <li>On the flat square, with perfect play, Player 1 seems to win exactly when <em>n</em> leaves a remainder of 3, 4 or 5 when divided by 6. Computers have checked this for many values of <em>n</em>, but nobody has proved it yet.</li>
+            <li>On the torus and the Klein bottle, a loop around the surface fences nothing off. Both sides of it are the same patch of soil. Does that change who wins?</li>
           </ul>
         </details>
       </section>
@@ -372,11 +379,11 @@
   const stack = new Int32Array(R * R);
 
   // ---- Game state ----
-  let n = 4, mode = 'auto', helpers = true;
+  let n = 4, mode = 'auto', helpers = true, surface = 'square';
   let spots = [], edges = [], segs = [], log = [];
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
-  let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false, giveUpArmed = 0;
+  let hintSpots = null, popIdx = -1, drag = null, pending = null, showHintBtn = false, giveUpArmed = 0;
   let growFrom = -1, popDelay = 0;   // edges from this index on animate in; the new seed pops after the first half
   const GROW_SPEED = 900;            // board units per second
   const scores = {};
@@ -420,11 +427,96 @@
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const lives = s => 3 - s.deg;
 
+  // ---- Surfaces ----
+  // A surface is the square with some edges glued. 'glue' joins an edge to its opposite straight
+  // across; 'flip' joins it mirrored. Vines are stored as polylines in square coordinates, cut at
+  // the seams into pieces: `breaks` lists the indices where a new piece starts. Anything that
+  // measures distance takes the minimum over a point's images in the neighbouring copies.
+  const SURFACES = {
+    square: { gx: 'none', gy: 'none' },
+    torus:  { gx: 'glue', gy: 'glue' },
+    klein:  { gx: 'glue', gy: 'flip' },
+  };
+  const flat = () => surface === 'square';
+  const outside = p => p.x < 0 || p.x > B || p.y < 0 || p.y > B;
+  const isBreak = (breaks, k) => breaks.length > 0 && breaks.includes(k);
+  // The copies of point w within `pad` of the square, with the copy's index (i, j).
+  function images(w, pad) {
+    if (flat()) return [{ x: w.x, y: w.y, i: 0, j: 0 }];
+    const g = SURFACES[surface], out = [];
+    for (let j = -1; j <= 1; j++) {
+      if (j && g.gy === 'none') continue;
+      const x1 = (j && g.gy === 'flip') ? B - w.x : w.x, y1 = w.y + j * B;
+      for (let i = -1; i <= 1; i++) {
+        if (i && g.gx === 'none') continue;
+        const x2 = x1 + i * B, y2 = (i && g.gx === 'flip') ? B - y1 : y1;
+        if (x2 < -pad || x2 > B + pad || y2 < -pad || y2 > B + pad) continue;
+        out.push({ x: x2, y: y2, i, j });
+      }
+    }
+    return out;
+  }
+  // Undo the (i, j) copy transform: where point q of the square sits as seen from copy (i, j).
+  function unmap(q, i, j) {
+    const g = SURFACES[surface];
+    let x = q.x - i * B, y = (i && g.gx === 'flip') ? B - q.y : q.y;
+    y -= j * B;
+    if (j && g.gy === 'flip') x = B - x;
+    return { x, y };
+  }
+  // Map any point back into the square.
+  function wrapPt(p) {
+    if (flat()) return p;
+    const g = SURFACES[surface];
+    let x = p.x, y = p.y;
+    if (g.gy !== 'none') { const k = Math.floor(y / B); if (k) { y -= k * B; if (g.gy === 'flip' && (k & 1)) x = B - x; } }
+    if (g.gx !== 'none') { const k = Math.floor(x / B); if (k) { x -= k * B; if (g.gx === 'flip' && (k & 1)) y = B - y; } }
+    return { x, y };
+  }
+  // Where the segment a->b (a inside, b outside) leaves the square, and where it comes back in.
+  function seamExit(a, b) {
+    let t = Infinity, side = null;
+    const tryEdge = (tt, sd) => { if (tt >= 0 && tt < t) { t = tt; side = sd; } };
+    if (b.x < 0) tryEdge(a.x / (a.x - b.x), 'L');
+    if (b.x > B) tryEdge((B - a.x) / (b.x - a.x), 'R');
+    if (b.y < 0) tryEdge(a.y / (a.y - b.y), 'T');
+    if (b.y > B) tryEdge((B - a.y) / (b.y - a.y), 'B');
+    const S = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    if (side === 'L') S.x = 0; else if (side === 'R') S.x = B; else if (side === 'T') S.y = 0; else S.y = B;
+    const g = SURFACES[surface];
+    let entry;
+    if (side === 'L' || side === 'R') entry = { x: side === 'L' ? B : 0, y: g.gx === 'flip' ? B - S.y : S.y };
+    else entry = { x: g.gy === 'flip' ? B - S.x : S.x, y: side === 'T' ? B : 0 };
+    return { S, entry, side };
+  }
+  // Smallest distance from w to any segment in `list`, looking across the seams.
+  function distToSegs(w, list, pad) {
+    let m = Infinity;
+    for (const q of images(w, pad)) for (const s of list) {
+      const d = dSeg(q.x, q.y, s[0], s[1], s[2], s[3]);
+      if (d < m) m = d;
+    }
+    return m;
+  }
+  // Nearest seed to w across the seams: its index, distance and the copy it was seen in.
+  function nearestSeed(w, pad, skip) {
+    let best = -1, bd = Infinity, img = null;
+    for (const q of images(w, pad)) spots.forEach((s, i) => {
+      if (i === skip) return;
+      const d = dist(q, s);
+      if (d < bd) { bd = d; best = i; img = q; }
+    });
+    return { i: best, d: bd, img };
+  }
+
   function rebuildSegs() {
     segs = [];
     edges.forEach((e, ei) => {
       const P = e.pts;
-      for (let k = 0; k < P.length - 1; k++) segs.push([P[k].x, P[k].y, P[k + 1].x, P[k + 1].y, ei]);
+      for (let k = 0; k < P.length - 1; k++) {
+        if (isBreak(e.breaks, k + 1)) continue;
+        segs.push([P[k].x, P[k].y, P[k + 1].x, P[k + 1].y, ei]);
+      }
     });
   }
 
@@ -444,7 +536,7 @@
     spots = layout(n);
     edges = []; segs = []; log = [];
     moveCount = 0; player = 1; over = false; winner = 0; overText = '';
-    hintSpots = null; popIdx = -1; drag = null; showHintBtn = false; growFrom = -1;
+    hintSpots = null; popIdx = -1; drag = null; pending = null; showHintBtn = false; growFrom = -1;
     clearTimeout(giveUpArmed); giveUpArmed = 0;
     analyze();
     setMsg(defaultMsg());
@@ -475,16 +567,30 @@
     if (over) { setMsg('This game is over. Tap "Play again" for a new one.'); return; }
     const p = toBoard(e);
     if (!p) return;
+    if (pending && dist(p, pending.resume) <= START_R) {   // pick the waiting vine up again
+      e.preventDefault();
+      try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+      drag = pending; pending = null;
+      drag.id = e.pointerId; drag.sm = { x: p.x, y: p.y };
+      drag.breaks.push(drag.pts.length);
+      drag.pts.push({ x: drag.resume.x, y: drag.resume.y });
+      drag.cum.push(drag.cum[drag.cum.length - 1]);
+      setMsg('Keep going. Reach a seed, or loop back to the start seed.');
+      renderStroke(); renderSpots();
+      return;
+    }
     let best = -1, bd = Infinity;
     spots.forEach((s, i) => { const d = dist(s, p); if (d < bd) { bd = d; best = i; } });
-    if (bd > START_R) { setMsg('Start your vine on a seed.', true); return; }
+    if (bd > START_R) { setMsg(pending ? 'Pick up your vine at the glowing spot, or start a new one on a seed.' : 'Start your vine on a seed.', true); return; }
     const s = spots[best];
     if (lives(s) <= 0) { setMsg('That seed is full. It already has 3 vines.', true); return; }
     e.preventDefault();
     try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-    drag = { id: e.pointerId, start: best, pts: [{ x: s.x, y: s.y }], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
+    const dropped = !!pending;
+    pending = null;
+    drag = { id: e.pointerId, start: best, pts: [{ x: s.x, y: s.y }], breaks: [], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
     hintSpots = null;
-    setMsg('Now reach another seed, or loop back to this one.');
+    setMsg((dropped ? 'The waiting vine was dropped. ' : '') + 'Now reach another seed, or loop back to this one.');
     renderStroke(); renderSpots();
   });
 
@@ -536,6 +642,7 @@
   function pushPoint(p) {
     const d = drag;
     const prev = d.pts[d.pts.length - 1];
+    if (!flat() && !d.invalid && outside(p)) { leaveAtSeam(prev, p); return; }
     if (!d.invalid) {
       const reason = checkPoint(prev, p);
       if (reason) fail(reason);
@@ -544,11 +651,27 @@
     d.cum.push(d.cum[d.cum.length - 1] + dist(p, prev));
     if (d.invalid) return;
     const st = spots[d.start];
-    if (!d.armed && dist(p, st) > ARM_R) d.armed = true;
-    for (let i = 0; i < spots.length; i++) {
-      if (i === d.start && !d.armed) continue;
-      if (dist(p, spots[i]) < CAPTURE_R) { tryFinish(i); return; }
+    if (!d.armed && images(p, ARM_R).every(q => dist(q, st) > ARM_R)) d.armed = true;
+    const near = nearestSeed(p, CAPTURE_R, d.armed ? -1 : d.start);
+    if (near.i >= 0 && near.d < CAPTURE_R) tryFinish(near.i, near.img);
+  }
+
+  // The stroke has run off the edge of a glued surface. Cut it at the seam, and leave it waiting
+  // to be picked up where it comes back in on the other side.
+  function leaveAtSeam(prev, p) {
+    const d = drag;
+    const { S, entry } = seamExit(prev, p);
+    if (dist(S, prev) > 1e-9) {
+      const reason = checkPoint(prev, S);
+      if (reason) { fail(reason); d.pts.push(S); d.cum.push(d.cum[d.cum.length - 1] + dist(S, prev)); return; }
+      d.pts.push(S);
+      d.cum.push(d.cum[d.cum.length - 1] + dist(S, prev));
     }
+    d.resume = entry;
+    pending = d;
+    drag = null;
+    setMsg('Your vine went off the edge. Lift your finger, then pick it up at the glowing spot on the other side.');
+    renderStroke(); renderSpots();
   }
 
   function fail(reason) {
@@ -564,40 +687,59 @@
     return CLEAR * Math.min(1, (m - NO_CLEAR_R) / (FULL_CLEAR_R - NO_CLEAR_R));
   }
   function clearanceNeeded(p) {
-    let m = Infinity;
-    for (const s of spots) m = Math.min(m, dist(p, s));
-    return clearanceAt(m);
+    return clearanceAt(nearestSeed(p, FULL_CLEAR_R, -1).d);
+  }
+
+  // Does segment a->b cross an existing vine, or this stroke's own earlier segments (the last
+  // `tail` segments excluded)?
+  function crossing(a, b, tail) {
+    for (const s of segs) if (segX(a.x, a.y, b.x, b.y, s[0], s[1], s[2], s[3])) return 'Vines can’t cross each other.';
+    const P = drag.pts, br = drag.breaks;
+    for (let i = 0; i < P.length - 1 - tail; i++) {
+      if (isBreak(br, i + 1)) continue;
+      if (segX(a.x, a.y, b.x, b.y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y)) return 'A vine can’t cross itself.';
+    }
+    return null;
   }
 
   function checkPoint(a, b) {
-    if (b.x < MARGIN || b.y < MARGIN || b.x > B - MARGIN || b.y > B - MARGIN) return 'Keep your vine inside the garden bed.';
-    for (const s of segs) if (segX(a.x, a.y, b.x, b.y, s[0], s[1], s[2], s[3])) return 'Vines can’t cross each other.';
-    const P = drag.pts;
-    for (let i = 0; i < P.length - 2; i++) {
-      if (segX(a.x, a.y, b.x, b.y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y)) return 'A vine can’t cross itself.';
-    }
+    if (flat() && (b.x < MARGIN || b.y < MARGIN || b.x > B - MARGIN || b.y > B - MARGIN)) return 'Keep your vine inside the garden bed.';
+    const x = crossing(a, b, 1);
+    if (x) return x;
     const need = clearanceNeeded(b);
     if (need > 0) {
-      for (const s of segs) if (dSeg(b.x, b.y, s[0], s[1], s[2], s[3]) < need) return 'Too close to another vine. Leave a little room.';
-      const L = drag.cum[drag.cum.length - 1];
-      for (let i = 0; i < P.length - 1; i++) {
-        if (L - drag.cum[i + 1] < 3 * CLEAR) break;
-        if (dSeg(b.x, b.y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y) < need) return 'Too close to your own vine.';
+      if (distToSegs(b, segs, need) < need) return 'Too close to another vine. Leave a little room.';
+      const P = drag.pts, br = drag.breaks, L = drag.cum[drag.cum.length - 1];
+      for (const q of images(b, need)) {
+        for (let i = 0; i < P.length - 1; i++) {
+          if (L - drag.cum[i + 1] < 3 * CLEAR) break;
+          if (isBreak(br, i + 1)) continue;
+          if (dSeg(q.x, q.y, P[i].x, P[i].y, P[i + 1].x, P[i + 1].y) < need) return 'Too close to your own vine.';
+        }
       }
     }
     return null;
   }
 
-  function tryFinish(i) {
+  function tryFinish(i, img) {
     const d = drag, s = spots[i];
     if (i === d.start) {
       if (lives(s) < 2) { fail('A loop needs 2 free shoots on its seed.'); return; }
     } else if (lives(s) <= 0) { fail('Your vine touched a full seed. Go around it.'); return; }
     const a = d.pts[d.pts.length - 1], b = { x: s.x, y: s.y };
-    for (const sg of segs) if (segX(a.x, a.y, b.x, b.y, sg[0], sg[1], sg[2], sg[3])) { fail('Vines can’t cross each other.'); return; }
-    const P = d.pts;
-    for (let k = 0; k < P.length - 2; k++) {
-      if (segX(a.x, a.y, b.x, b.y, P[k].x, P[k].y, P[k + 1].x, P[k + 1].y)) { fail('A vine can’t cross itself.'); return; }
+    const t = unmap(b, img.i, img.j);   // the seed as seen from where the stroke is
+    if (outside(t)) {                   // the last bit of vine crosses a seam
+      const { S, entry } = seamExit(a, t);
+      let x = dist(S, a) > 1e-9 ? crossing(a, S, 1) : null;
+      if (x) { fail(x); return; }
+      if (dist(S, a) > 1e-9) { d.pts.push(S); d.cum.push(d.cum[d.cum.length - 1] + dist(S, a)); }
+      x = crossing(entry, b, 0);
+      if (x) { fail(x); return; }
+      d.breaks.push(d.pts.length);
+      d.pts.push(entry); d.cum.push(d.cum[d.cum.length - 1]);
+    } else {
+      const x = crossing(a, b, 1);
+      if (x) { fail(x); return; }
     }
     d.pts.push(b);
     commit(i);
@@ -606,23 +748,24 @@
   // Place the new seed near the middle of the vine, at the roomiest spot. Returns -1 when no spot
   // in the middle 30-70% of the vine has room for a seed: at least SEED_GAP_V from other vines and
   // SEED_GAP_S from other seeds.
-  function pickSplit(P) {
+  function pickSplit(P, br) {
     const cum = [0];
-    for (let k = 1; k < P.length; k++) cum.push(cum[k - 1] + dist(P[k], P[k - 1]));
+    for (let k = 1; k < P.length; k++) cum.push(cum[k - 1] + (isBreak(br, k) ? 0 : dist(P[k], P[k - 1])));
     const L = cum[cum.length - 1];
     let bestK = -1, best = -Infinity;
     for (let k = 1; k < P.length - 1; k++) {
       const t = cum[k] / L;
       if (t < 0.3 || t > 0.7) continue;
+      if (isBreak(br, k) || isBreak(br, k + 1)) continue;      // not on a seam
       const p = P[k];
-      let de = Infinity;
-      for (const s of segs) de = Math.min(de, dSeg(p.x, p.y, s[0], s[1], s[2], s[3]));
-      for (let j = 0; j < P.length - 1; j++) {
+      if (!flat() && (p.x < SPOT_R || p.x > B - SPOT_R || p.y < SPOT_R || p.y > B - SPOT_R)) continue;
+      let de = distToSegs(p, segs, 40);
+      for (const q of images(p, 40)) for (let j = 0; j < P.length - 1; j++) {
+        if (isBreak(br, j + 1)) continue;
         if (Math.abs(cum[j] - cum[k]) < 40 || Math.abs(cum[j + 1] - cum[k]) < 40) continue;
-        de = Math.min(de, dSeg(p.x, p.y, P[j].x, P[j].y, P[j + 1].x, P[j + 1].y));
+        de = Math.min(de, dSeg(q.x, q.y, P[j].x, P[j].y, P[j + 1].x, P[j + 1].y));
       }
-      let ds = Infinity;
-      for (const s of spots) ds = Math.min(ds, dist(p, s));
+      const ds = nearestSeed(p, 40, -1).d;
       if (de < SEED_GAP_V || ds < SEED_GAP_S) continue;
       const score = Math.min(de, ds * 0.6, 40) - Math.abs(t - 0.5) * 20;
       if (score > best) { best = score; bestK = k; }
@@ -632,15 +775,15 @@
 
   function commit(target) {
     const d = drag;
-    const P = d.pts;
-    const k = pickSplit(P);
+    const P = d.pts, br = d.breaks;
+    const k = pickSplit(P, br);
     if (k < 0) { fail('No room for a new seed on that vine.'); return; }
     drag = null;
     const ns = { x: P[k].x, y: P[k].y, deg: 2 };
     spots.push(ns);
     const ni = spots.length - 1;
-    edges.push({ a: d.start, b: ni, pts: P.slice(0, k + 1), player });
-    edges.push({ a: ni, b: target, pts: P.slice(k), player });
+    edges.push({ a: d.start, b: ni, pts: P.slice(0, k + 1), breaks: br.filter(i => i <= k), player });
+    edges.push({ a: ni, b: target, pts: P.slice(k), breaks: br.filter(i => i > k).map(i => i - k), player });
     spots[d.start].deg++;
     spots[target].deg++;
     moveCount++;
@@ -675,22 +818,44 @@
   const RING_R = CAPTURE_R + 2;
   const MID_R = (NO_CLEAR_R + FULL_CLEAR_R) / 2;
   function labelAt(x, y) {
-    const ix = Math.min(R - 1, Math.max(0, Math.floor(x * S)));
-    const iy = Math.min(R - 1, Math.max(0, Math.floor(y * S)));
+    const w = wrapPt({ x, y });
+    const ix = Math.min(R - 1, Math.max(0, Math.floor(w.x * S)));
+    const iy = Math.min(R - 1, Math.max(0, Math.floor(w.y * S)));
     return lab[iy * R + ix];
+  }
+  // Run fn once per neighbouring copy of the square, with the canvas transformed to that copy, so
+  // walls spill across the seams the way the vines do. On the plain square that is just once.
+  function eachCopy(fn) {
+    if (flat()) { fn(); return; }
+    const g = SURFACES[surface];
+    for (let j = -1; j <= 1; j++) {
+      if (j && g.gy === 'none') continue;
+      for (let i = -1; i <= 1; i++) {
+        if (i && g.gx === 'none') continue;
+        rctx.save();
+        if (i && g.gx === 'flip') rctx.transform(1, 0, 0, -1, i * B, B); else rctx.transform(1, 0, 0, 1, i * B, 0);
+        if (j && g.gy === 'flip') rctx.transform(-1, 0, 0, 1, B, j * B); else rctx.transform(1, 0, 0, 1, 0, j * B);
+        fn();
+        rctx.restore();
+      }
+    }
   }
   function strokeVines(width) {
     rctx.lineWidth = width;
-    for (const e of edges) {
-      rctx.beginPath();
-      rctx.moveTo(e.pts[0].x, e.pts[0].y);
-      for (let k = 1; k < e.pts.length; k++) rctx.lineTo(e.pts[k].x, e.pts[k].y);
-      rctx.stroke();
-    }
+    eachCopy(() => {
+      for (const e of edges) {
+        rctx.beginPath();
+        for (let k = 0; k < e.pts.length; k++) {
+          if (k === 0 || isBreak(e.breaks, k)) rctx.moveTo(e.pts[k].x, e.pts[k].y);
+          else rctx.lineTo(e.pts[k].x, e.pts[k].y);
+        }
+        rctx.stroke();
+      }
+    });
   }
   function seedDiscs(r) {
     rctx.beginPath();
-    for (const s of spots) { rctx.moveTo(s.x + r, s.y); rctx.arc(s.x, s.y, r, 0, 2 * Math.PI); }
+    for (const s of spots) for (const q of images(s, r)) { rctx.moveTo(q.x + r, q.y); rctx.arc(q.x, q.y, r, 0, 2 * Math.PI); }
   }
   // Near seeds the rule asks for less room, so inside radius r redraw the vines thinner.
   function thinNearSeeds(r, width) {
@@ -714,23 +879,28 @@
     thinNearSeeds(FULL_CLEAR_R, 2 * clearanceAt(MID_R));
     thinNearSeeds(MID_R, 0.75);
     seedDiscs(DISC_R); rctx.fill();
-    rctx.fillRect(0, 0, B, MARGIN); rctx.fillRect(0, B - MARGIN, B, MARGIN);
-    rctx.fillRect(0, 0, MARGIN, B); rctx.fillRect(B - MARGIN, 0, MARGIN, B);
+    if (flat()) {
+      rctx.fillRect(0, 0, B, MARGIN); rctx.fillRect(0, B - MARGIN, B, MARGIN);
+      rctx.fillRect(0, 0, MARGIN, B); rctx.fillRect(B - MARGIN, 0, MARGIN, B);
+    }
 
     const img = rctx.getImageData(0, 0, R, R).data;
     const N = R * R;
     for (let i = 0; i < N; i++) lab[i] = img[i * 4 + 3] > 0 ? -2 : -1;
-    let nl = 0;
+    // Flood fill. On a glued surface the neighbours wrap across the seams, mirrored on a flipped axis.
+    const g = SURFACES[surface], wx = g.gx !== 'none', wy = g.gy !== 'none', fx = g.gx === 'flip', fy = g.gy === 'flip';
+    let nl = 0, sp = 0;
+    const visit = (nb, l) => { if (nb >= 0 && lab[nb] === -1) { lab[nb] = l; stack[sp++] = nb; } };
     for (let i = 0; i < N; i++) {
       if (lab[i] !== -1) continue;
-      let sp = 0;
+      sp = 0;
       stack[sp++] = i; lab[i] = nl;
       while (sp > 0) {
-        const c = stack[--sp], x = c % R;
-        if (x > 0 && lab[c - 1] === -1) { lab[c - 1] = nl; stack[sp++] = c - 1; }
-        if (x < R - 1 && lab[c + 1] === -1) { lab[c + 1] = nl; stack[sp++] = c + 1; }
-        if (c >= R && lab[c - R] === -1) { lab[c - R] = nl; stack[sp++] = c - R; }
-        if (c < N - R && lab[c + R] === -1) { lab[c + R] = nl; stack[sp++] = c + R; }
+        const c = stack[--sp], x = c % R, y = (c - x) / R;
+        visit(x > 0 ? c - 1 : !wx ? -1 : fx ? (R - 1 - y) * R + (R - 1) : c + R - 1, nl);
+        visit(x < R - 1 ? c + 1 : !wx ? -1 : fx ? (R - 1 - y) * R : c - (R - 1), nl);
+        visit(y > 0 ? c - R : !wy ? -1 : fy ? (R - 1) * R + (R - 1 - x) : c + (R - 1) * R, nl);
+        visit(y < R - 1 ? c + R : !wy ? -1 : fy ? (R - 1 - x) : x, nl);
       }
       nl++;
     }
@@ -806,23 +976,24 @@
   }
 
   // ---- Rendering ----
-  function pathD(P) {
-    return 'M' + P.map(p => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' L');
+  function pathD(P, breaks) {
+    let d = '';
+    for (let k = 0; k < P.length; k++) d += (k === 0 || isBreak(breaks, k) ? 'M' : ' L') + P[k].x.toFixed(1) + ' ' + P[k].y.toFixed(1);
+    return d;
   }
-
-  function pathLen(P) {
+  function pathLen(P, breaks) {
     let L = 0;
-    for (let k = 1; k < P.length; k++) L += dist(P[k], P[k - 1]);
+    for (let k = 1; k < P.length; k++) if (!isBreak(breaks, k)) L += dist(P[k], P[k - 1]);
     return L;
   }
   function renderEdges() {
     let delay = 0;
     popDelay = 0;
     gEdges.innerHTML = edges.map((e, ei) => {
-      const d = pathD(e.pts);
+      const d = pathD(e.pts, e.breaks);
       let cls = 'vine p' + e.player, hi = 'vine-hi', anim = '';
       if (growFrom >= 0 && ei >= growFrom) {
-        const L = pathLen(e.pts), dur = L / GROW_SPEED;
+        const L = pathLen(e.pts, e.breaks), dur = L / GROW_SPEED;
         cls += ' grow'; hi += ' grow';
         anim = `stroke-dasharray:${L.toFixed(1)};stroke-dashoffset:${L.toFixed(1)};animation-duration:${dur.toFixed(3)}s;animation-delay:${delay.toFixed(3)}s;`;
         if (ei === growFrom) popDelay = dur;
@@ -834,10 +1005,14 @@
   }
 
   function renderStroke() {
-    if (!drag) { strokeEl.setAttribute('d', ''); return; }
-    strokeEl.setAttribute('d', pathD(drag.pts));
-    strokeEl.setAttribute('class', drag.invalid ? 'stroke bad' : 'stroke');
+    const cur = drag || pending;
+    if (!cur) { strokeEl.setAttribute('d', ''); $('gPending').innerHTML = ''; return; }
+    strokeEl.setAttribute('d', pathD(cur.pts, cur.breaks));
+    strokeEl.setAttribute('class', cur.invalid ? 'stroke bad' : pending ? 'stroke waiting' : 'stroke');
     strokeEl.style.stroke = PCOL[player];
+    $('gPending').innerHTML = pending
+      ? `<circle class="pickup" cx="${pending.resume.x}" cy="${pending.resume.y}" r="${SPOT_R + 4}" style="stroke:${PCOL[player]}"/>`
+      : '';
   }
 
   const PIPS = { 3: [[0, -5.2], [-4.8, 3], [4.8, 3]], 2: [[-4.3, 0], [4.3, 0]], 1: [[0, 0]] };
@@ -855,6 +1030,23 @@
     }).join('');
     popIdx = -1;
     svg.setAttribute('aria-label', `Garden bed with ${spots.length} seeds and ${edges.length} vine pieces.`);
+  }
+
+  // Arrows on the frame show which edges are glued and which way, as in a topology textbook:
+  // single arrows for the left/right pair, double arrows for the top/bottom pair. On a flipped
+  // pair the arrows point opposite ways.
+  function renderSeams() {
+    const g = SURFACES[surface], out = [];
+    const tri = (cx, cy, dir, k) => {   // dir: 0 right, 1 down, 2 left, 3 up; k arrows side by side
+      const a = dir * Math.PI / 2, ux = Math.cos(a), uy = Math.sin(a), vx = -uy, vy = ux;
+      for (let m = 0; m < k; m++) {
+        const off = (m - (k - 1) / 2) * 9, ox = cx + ux * off, oy = cy + uy * off;
+        out.push(`<polygon points="${(ox + ux * 5).toFixed(1)},${(oy + uy * 5).toFixed(1)} ${(ox - ux * 4 + vx * 4).toFixed(1)},${(oy - uy * 4 + vy * 4).toFixed(1)} ${(ox - ux * 4 - vx * 4).toFixed(1)},${(oy - uy * 4 - vy * 4).toFixed(1)}"/>`);
+      }
+    };
+    if (g.gx !== 'none') { tri(-3, B / 2, 3, 1); tri(B + 3, B / 2, g.gx === 'flip' ? 1 : 3, 1); }
+    if (g.gy !== 'none') { tri(B / 2, -3, 0, 2); tri(B / 2, B + 3, g.gy === 'flip' ? 2 : 0, 2); }
+    $('gSeams').innerHTML = out.join('');
   }
 
   function renderStatus() {
@@ -889,6 +1081,10 @@
     document.querySelectorAll('[data-seeds]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.seeds === n)));
     document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
     document.querySelectorAll('[data-helpers]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.helpers === 'on') === helpers)));
+    document.querySelectorAll('[data-surface]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.surface === surface)));
+    $('surfaceNote').textContent = surface === 'square' ? ''
+      : surface === 'torus' ? 'The edges are glued to their opposites. A vine that goes off one edge comes back in on the other.'
+      : 'Left and right are glued straight. Top and bottom are glued with a flip, so a vine comes back in mirrored.';
     $('modeNote').textContent = mode === 'auto'
       ? 'The game announces the winner when no moves are left.'
       : 'The game stays quiet. Tap "I\'m stuck" when you think you can\'t move.';
@@ -911,6 +1107,7 @@
   }
 
   function render() {
+    renderSeams();
     renderStatus();
     renderEdges();
     renderSpots();
@@ -937,6 +1134,10 @@
     }
     render();
   }));
+  document.querySelectorAll('[data-surface]').forEach(b => b.addEventListener('click', () => {
+    surface = b.dataset.surface;
+    newGame();
+  }));
   document.querySelectorAll('[data-helpers]').forEach(b => b.addEventListener('click', () => {
     helpers = b.dataset.helpers === 'on';
     render();
@@ -952,16 +1153,18 @@
   // Small hook for automated testing; harmless in normal play. load() replaces the board with a
   // hand-built position so tests can check analysis and placement without drawing every vine.
   window.__sprouts = {
-    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode }),
+    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode, surface,
+                    pending: pending && { resume: pending.resume, points: pending.pts.length } }),
     load: st => {
+      if (st.surface) surface = st.surface;
       spots = st.spots.map(s => ({ x: s.x, y: s.y, deg: s.deg }));
-      edges = st.edges.map(e => ({ a: e.a, b: e.b, player: e.player || 1, pts: e.pts.map(p => ({ x: p.x, y: p.y })) }));
+      edges = st.edges.map(e => ({ a: e.a, b: e.b, player: e.player || 1, breaks: (e.breaks || []).slice(), pts: e.pts.map(p => ({ x: p.x, y: p.y })) }));
       for (const e of edges) {   // vine ends must share the seed's exact coordinates
         e.pts[0] = { x: spots[e.a].x, y: spots[e.a].y };
         e.pts[e.pts.length - 1] = { x: spots[e.b].x, y: spots[e.b].y };
       }
       log = []; moveCount = st.moveCount || 0; player = st.player || 1; over = false; winner = 0; overText = '';
-      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false; growFrom = -1;
+      hintSpots = null; popIdx = -1; drag = null; pending = null; showHintBtn = false; growFrom = -1;
       rebuildSegs(); analyze(); setMsg(defaultMsg()); render();
     },
   };

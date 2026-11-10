@@ -37,7 +37,7 @@ class G:
         self.p.mouse.up()
     def st(self):
         return self.p.evaluate("""() => { const s = window.__sprouts.state();
-          return {moves: s.moveCount, player: s.player, over: s.over, winner: s.winner,
+          return {moves: s.moveCount, player: s.player, over: s.over, winner: s.winner, surface: s.surface,
                   movable: s.analysis.movable, hint: s.analysis.hint, regions: s.analysis.regions,
                   spots: s.spots.map(p => [Math.round(p.x), Math.round(p.y), p.deg])}; }""")
     def msg(self):
@@ -226,6 +226,83 @@ with sync_playwright() as pw:
     g.load(sp, [edge(2, 3, [(120.5, 20), (120.5, 480)])])
     s = g.st()
     check(not s["movable"], f"seed beside a skimming wall stays in its own face: movable={s['movable']} regions={s['regions']}")
+
+    # ================= Surfaces =================
+    def pend():
+        return g.p.evaluate("window.__sprouts.state().pending")
+
+    # --- Torus: a vine leaves the right edge, waits, and is picked up on the left ---
+    page.click("[data-surface='torus']"); page.click("[data-seeds='2']")
+    check(g.st()["surface"] == "torus" and g.st()["moves"] == 0, "torus selected")
+    g.stroke([A, (480, 250), (525, 250)])
+    pd = pend()
+    check(pd is not None and abs(pd["resume"]["x"]) < 1e-6 and abs(pd["resume"]["y"] - 250) < 1e-6 and g.st()["moves"] == 0,
+          f"stroke waits at the seam, pick-up at the left edge: {pd} msg={g.msg()}")
+    g.stroke([(3, 250), (60, 250), (110, 250), B])
+    s = g.st()
+    check(s["moves"] == 1 and pend() is None and len(s["spots"]) == 3, f"picked up and finished at B: moves={s['moves']} spots={s['spots']}")
+    brk = page.evaluate("window.__sprouts.state().edges.map(e => e.breaks.length)")
+    check(sum(brk) == 1, f"the vine is stored in two pieces: breaks per edge {brk}")
+
+    # --- Torus: a loop around the torus does not fence anything off ---
+    page.click("[data-seeds='2']")
+    g.stroke([A, (350, 200), (480, 200), (525, 200)])
+    g.stroke([(3, 200), (200, 200), (330, 200), A])
+    s = g.st()
+    check(s["moves"] == 1 and s["spots"][0][2] == 2, f"loop around the torus committed as a loop on A: {s['spots']} msg={g.msg()}")
+    C = [p for p in s["spots"] if p[2] == 2 and p != [350, 250, 2]][0]
+    # On the plane this loop would split the bed. On the torus B can still reach the loop's seed
+    # the long way round: off the bottom, back in at the top.
+    g.stroke([B, (150, 400), (150, 480), (150, 525)])
+    pd = pend()
+    check(pd is not None and abs(pd["resume"]["y"]) < 1e-6, f"B's vine waits at the bottom seam: {pd}")
+    g.stroke([(150, 3), (150, 100), (C[0], C[1] - 60), (C[0], C[1])])
+    s = g.st()
+    check(s["moves"] == 2 and [p for p in s["spots"] if p[:2] == C[:2]][0][2] == 3,
+          f"B reached C around the torus: moves={s['moves']} spots={s['spots']} msg={g.msg()}")
+
+    # --- Torus: a stroke along the right edge is too close to a vine along the left edge ---
+    fence = ([seed(450, 250), seed(450, 400), seed(2, 20, 3), seed(2, 480, 3)], [edge(2, 3, [(2, 20), (2, 480)])])
+    g.load(*fence)
+    g.stroke([(450, 250), (496, 250), (496, 400), (450, 400)])     # 6 units from the fence across the seam
+    check(g.st()["moves"] == 0 and "Too close" in g.msg(), "clearance is checked across the seam; msg=" + g.msg())
+    g.p.evaluate("st => window.__sprouts.load(st)", {"surface": "square", "spots": fence[0], "edges": fence[1]})
+    g.stroke([(450, 250), (496, 250), (496, 400), (450, 400)])
+    check(g.st()["moves"] == 1, "same stroke is fine on the square; msg=" + g.msg())
+
+    # --- Torus: end detection sees across the seam ---
+    def cut_board(two_fences):
+        # fence posts at y=10 and y=490: their discs reach across the top/bottom seam, so no gap
+        sp = [seed(120, 250, 2), seed(380, 250, 2), seed(250, 10, 3), seed(250, 490, 3)]
+        ed = [edge(2, 3, [(250, 10), (250, 490)])]
+        if two_fences:
+            sp += [seed(4, 10, 3), seed(4, 490, 3)]
+            ed.append(edge(4, 5, [(4, 10), (4, 490)]))
+        return {"surface": "torus", "spots": sp, "edges": ed}
+    g.p.evaluate("st => window.__sprouts.load(st)", cut_board(False))
+    check(g.st()["movable"], "one fence does not separate the torus: a move remains")
+    g.p.evaluate("st => window.__sprouts.load(st)", cut_board(True))
+    check(not g.st()["movable"], "two fences do: no move left")
+
+    # --- Klein bottle: off the top at x, back in at the bottom at 500 - x ---
+    page.click("[data-surface='klein']"); page.click("[data-seeds='2']")
+    g.stroke([A, (350, 150), (350, 40), (350, -20)])
+    pd = pend()
+    check(pd is not None and abs(pd["resume"]["x"] - 150) < 0.01 and abs(pd["resume"]["y"] - 500) < 1e-6,
+          f"Klein pick-up point is mirrored: {pd}")
+    g.stroke([(150, 497), (150, 400), (150, 300), B])
+    s = g.st()
+    check(s["moves"] == 1, f"Klein vine finished at B: moves={s['moves']} msg={g.msg()}")
+    # left and right are glued straight on the Klein bottle
+    g.stroke([A, (480, 250), (525, 250)])
+    pd = pend()
+    check(pd is not None and abs(pd["resume"]["x"]) < 1e-6 and abs(pd["resume"]["y"] - 250) < 1e-6, f"Klein left/right straight: {pd}")
+
+    # --- Dropping a waiting vine by starting a new one ---
+    g.stroke([B, (200, 300), (300, 350), (352, 330), A])      # approach A from below, clear of both pieces
+    s = g.st()
+    check(pend() is None and s["moves"] == 2, f"starting a new vine drops the waiting one: pending={pend()} moves={s['moves']} msg={g.msg()}")
+    page.click("[data-surface='square']")
 
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
