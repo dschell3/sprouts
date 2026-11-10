@@ -124,6 +124,12 @@
   }
   .btn.solid { background: var(--solid); color: var(--solid-ink); border-color: var(--solid); }
   .btn[hidden] { display: none; }
+  .quiet {
+    display: block; margin: 4px auto 0; min-height: 38px; padding: 8px 12px;
+    font: inherit; font-size: 0.85rem; color: var(--muted); background: none; border: none;
+    text-decoration: underline; cursor: pointer;
+  }
+  .quiet[hidden] { display: none; }
   .btn:focus-visible, .pill:focus-visible { outline: 3px solid var(--p1); outline-offset: 2px; }
 
   .row { margin-bottom: 12px; }
@@ -198,6 +204,7 @@
         <button class="btn" id="btnHint" hidden>Show a hint</button>
         <button class="btn solid" id="btnNew">New game</button>
       </div>
+      <button class="quiet" id="btnGiveUp" hidden>Give up</button>
     </section>
 
     <aside>
@@ -318,7 +325,7 @@
   let spots = [], edges = [], segs = [], log = [];
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
-  let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false;
+  let hintSpots = null, popIdx = -1, drag = null, showHintBtn = false, giveUpArmed = 0;
   const scores = {};
   for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
 
@@ -385,6 +392,7 @@
     edges = []; segs = []; log = [];
     moveCount = 0; player = 1; over = false; winner = 0; overText = '';
     hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+    clearTimeout(giveUpArmed); giveUpArmed = 0;
     analyze();
     setMsg(defaultMsg());
     render();
@@ -713,6 +721,21 @@
     render();
   }
 
+  // Giving up takes two taps a few seconds apart, so a stray tap can't end the game.
+  function giveUp() {
+    if (over || drag || moveCount === 0) return;
+    if (!giveUpArmed) {
+      giveUpArmed = setTimeout(() => { giveUpArmed = 0; renderControls(); }, 4000);
+      renderControls();
+      return;
+    }
+    clearTimeout(giveUpArmed); giveUpArmed = 0;
+    const w = 3 - player;
+    log.push({ n: null, p: player, text: 'gave up' });
+    endGame(w, `Player ${player} gave up. Player ${w} wins.`);
+    render();
+  }
+
   function showHint() {
     if (over) return;
     hintSpots = analysis.hint.slice();
@@ -778,6 +801,8 @@
     $('btnStuck').hidden = mode !== 'challenge' || over;
     $('btnHint').hidden = !showHintBtn || over;
     $('btnNew').textContent = over ? 'Play again' : 'New game';
+    $('btnGiveUp').hidden = over || moveCount === 0;
+    $('btnGiveUp').textContent = giveUpArmed ? 'Really give up? Tap again.' : 'Give up';
   }
 
   function renderSettings() {
@@ -838,6 +863,7 @@
   }));
   $('btnStuck').addEventListener('click', stuck);
   $('btnHint').addEventListener('click', showHint);
+  $('btnGiveUp').addEventListener('click', giveUp);
   $('btnNew').addEventListener('click', newGame);
 
   // Small hook for automated testing; harmless in normal play. load() replaces the board with a

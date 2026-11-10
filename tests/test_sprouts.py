@@ -201,6 +201,16 @@ with sync_playwright() as pw:
     g.stroke([(100, 250), (400, 250)])
     check(g.st()["moves"] == 1, "and a vine really can be drawn through it; msg=" + g.msg())
 
+    # --- Give up: hidden before the first move, needs two taps, hands the win to the other player ---
+    page.click("[data-seeds='2']")
+    check(not page.is_visible("#btnGiveUp"), "give up hidden before the first move")
+    g.stroke([A] + arc(250, 250, 100, 0, -math.pi)[1:])
+    page.click("#btnGiveUp")
+    check(not g.st()["over"] and "Really" in page.inner_text("#btnGiveUp"), "first give-up tap only asks to confirm")
+    page.click("#btnGiveUp")
+    s = g.st()
+    check(s["over"] and s["winner"] == 1, f"player 2 gave up, player 1 wins: over={s['over']} winner={s['winner']}")
+
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
     check(len(g.st()["spots"]) == 8, "8 seeds")

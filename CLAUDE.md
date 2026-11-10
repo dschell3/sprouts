@@ -33,6 +33,8 @@ Keep the game as **one self-contained `index.html`**: no build step, no framewor
   - *Challenge*: the game stays quiet; the player taps "I'm stuck" and the game checks the claim. A wrong claim offers "Show a hint", which pulses seeds that can be joined.
 - **Helpers on by default**: green pips inside seeds show remaining shoots (lives), and full seeds turn grey. They can be toggled off, since the professor may want it less guided.
 - **No undo in Sprouts.** Invalid strokes are simply discarded on release.
+- A small **"Give up"** link under the controls (two taps to confirm) hands the win to the other player. It can be removed if it proves unwanted.
+- **No persistence.** Scores and settings live only for the page session.
 - Player names stay "Player 1" / "Player 2". Colors: P1 green, P2 terracotta.
 - **Theme:** garden/greenhouse (seeds, vines, soil bed, wooden frame), styled like the owner's earlier "Coffee Shop Expedition" game: cards, pills, a move log, a scoreboard, and "How to play" details. Light and dark mode via CSS variables. The backup theme idea is retro arcade / Pac-Man (wraparound fits the torus).
 - Owner's writing style for UI text: simple, short sentences.
