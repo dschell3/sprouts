@@ -8,6 +8,9 @@
   /* Garden theme. Layout: board card on the left, panel on the right; stacks to one column on phones */
   :root {
     --bg: #eef2e6;
+    --bg2: #e3ead6;
+    --leaf: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2272%22%20height=%2272%22%20viewBox=%220%200%2072%2072%22%3E%3Cg%20fill=%22%25232a3a22%22%3E%3Cpath%20d=%22M20%208c-9%207-12%2018-8%2030%2011-5%2016-16%208-30z%22/%3E%3Cpath%20d=%22M56%2034c-10%205-15%2015-13%2027%2011-3%2017-13%2013-27z%22/%3E%3C/g%3E%3C/svg%3E");
+    --leaf-op: .05;
     --card: #fbfcf7;
     --ink: #23301f;
     --muted: #5f6e57;
@@ -32,7 +35,7 @@
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #151b13; --card: #1f271c; --ink: #e7eedf; --muted: #a3b298; --line: #33402e;
+      --bg: #151b13; --bg2: #0f140e; --leaf: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2272%22%20height=%2272%22%20viewBox=%220%200%2072%2072%22%3E%3Cg%20fill=%22%2523cfe0c0%22%3E%3Cpath%20d=%22M20%208c-9%207-12%2018-8%2030%2011-5%2016-16%208-30z%22/%3E%3Cpath%20d=%22M56%2034c-10%205-15%2015-13%2027%2011-3%2017-13%2013-27z%22/%3E%3C/g%3E%3C/svg%3E"); --leaf-op: .045; --card: #1f271c; --ink: #e7eedf; --muted: #a3b298; --line: #33402e;
       --bed: #2c2519; --speck: #3b3223; --frame: #7a5a3c;
       --p1: #5cc08a; --p2: #ec8a52; --seed: #d2a676; --seed-hi: #f0d1a6; --pip: #2d6a2e; --wilt: #5e574c; --wilt-hi: #7d7466;
       --bad: #ff6b5b; --hint: #ffc83d; --btn-bg: #283224; --solid: #e7eedf; --solid-ink: #151b13;
@@ -43,11 +46,18 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
+    min-height: 100vh;
     font-family: var(--font);
     font-size: 16px;
-    background: var(--bg);
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%) fixed;
     color: var(--ink);
     line-height: 1.45;
+  }
+  /* Faint leaves scattered over the page, drawn inline so they flip with the theme */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image: var(--leaf); background-size: 72px 72px;
+    opacity: var(--leaf-op);
   }
   .wrap {
     max-width: 1060px;
