@@ -18,8 +18,10 @@
     --p1: #2e7d4f;
     --p2: #c0622b;
     --seed: #6f4e33;
+    --seed-hi: #a07a58;
     --pip: #9be07a;
     --wilt: #c3b8a6;
+    --wilt-hi: #e2dacc;
     --bad: #c23b2e;
     --hint: #e0a100;
     --btn-bg: #ffffff;
@@ -32,7 +34,7 @@
     :root:not([data-theme="light"]) {
       --bg: #151b13; --card: #1f271c; --ink: #e7eedf; --muted: #a3b298; --line: #33402e;
       --bed: #2c2519; --speck: #3b3223; --frame: #7a5a3c;
-      --p1: #5cc08a; --p2: #ec8a52; --seed: #d2a676; --pip: #2d6a2e; --wilt: #5e574c;
+      --p1: #5cc08a; --p2: #ec8a52; --seed: #d2a676; --seed-hi: #f0d1a6; --pip: #2d6a2e; --wilt: #5e574c; --wilt-hi: #7d7466;
       --bad: #ff6b5b; --hint: #ffc83d; --btn-bg: #283224; --solid: #e7eedf; --solid-ink: #151b13;
       --ring: #1f271c;
       color-scheme: dark;
@@ -106,8 +108,8 @@
   .vine-hi { fill: none; stroke: #ffffff; stroke-opacity: .3; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
   .stroke { fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
   .stroke.bad { stroke: var(--bad) !important; stroke-dasharray: 6 5; opacity: .95; }
-  .seed-body { fill: var(--seed); stroke: var(--ring); stroke-width: 2.5; }
-  .wilt .seed-body { fill: var(--wilt); }
+  .seed-body { fill: url(#seedFill); stroke: var(--ring); stroke-width: 2.5; }
+  .wilt .seed-body { fill: url(#wiltFill); }
   .pip { fill: var(--pip); }
   .ring { fill: none; stroke-width: 3; stroke-dasharray: 4 4; }
   .hintring { fill: none; stroke: var(--hint); stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
@@ -195,6 +197,14 @@
       </div>
       <svg id="svg" viewBox="-10 -10 520 520" role="img" aria-label="Garden bed">
         <defs>
+          <radialGradient id="seedFill" cx="38%" cy="32%" r="72%">
+            <stop offset="0" style="stop-color:var(--seed-hi)"/>
+            <stop offset="1" style="stop-color:var(--seed)"/>
+          </radialGradient>
+          <radialGradient id="wiltFill" cx="38%" cy="32%" r="72%">
+            <stop offset="0" style="stop-color:var(--wilt-hi)"/>
+            <stop offset="1" style="stop-color:var(--wilt)"/>
+          </radialGradient>
           <pattern id="soil" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle class="speck" cx="5" cy="6" r="1.2"/>
             <circle class="speck" cx="16" cy="15" r="0.9"/>
