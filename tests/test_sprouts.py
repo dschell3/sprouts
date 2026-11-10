@@ -134,6 +134,15 @@ with sync_playwright() as pw:
     g.stroke([A, (480, 250), (520, 250)])
     check(g.st()["moves"] == 0 and "garden" in g.msg().lower(), "out-of-bounds rejected; msg=" + g.msg())
 
+    # --- Lost pointer capture mid-stroke must not lock the board ---
+    page.click("[data-seeds='2']")
+    page.mouse.move(*g.to_client(*A)); page.mouse.down()
+    page.mouse.move(*g.to_client(330, 200))
+    page.evaluate("document.getElementById('svg').dispatchEvent(new PointerEvent('lostpointercapture', {pointerId: 1}))")
+    # no pointerup ever arrives; the next stroke starts with the button still "down"
+    g.stroke([A] + arc(250, 250, 100, 0, -math.pi)[1:])
+    check(g.st()["moves"] == 1, "stroke accepted after a lost pointer capture; msg=" + g.msg())
+
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
     check(len(g.st()["spots"]) == 8, "8 seeds")

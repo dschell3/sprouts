@@ -450,6 +450,10 @@
   }
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
+  // If the browser takes the pointer away mid-stroke (a system gesture, a second finger), end the
+  // stroke instead of leaving the board stuck waiting for a pointerup that never comes.
+  svg.addEventListener('lostpointercapture', endDrag);
+  svg.addEventListener('contextmenu', e => e.preventDefault());   // long-press menu on Android
 
   function addPoint(q) {
     const last = drag.pts[drag.pts.length - 1];
