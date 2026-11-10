@@ -134,6 +134,12 @@ with sync_playwright() as pw:
     g.stroke([A, (480, 250), (520, 250)])
     check(g.st()["moves"] == 0 and "garden" in g.msg().lower(), "out-of-bounds rejected; msg=" + g.msg())
 
+    # --- A tap on a seed is a gentle prompt, not an error ---
+    page.click("[data-seeds='2']")
+    page.mouse.move(*g.to_client(*A)); page.mouse.down(); page.mouse.up()
+    check("tap" in g.msg() and not page.evaluate("document.getElementById('msg').classList.contains('bad')"),
+          "tap gives a neutral prompt; msg=" + g.msg())
+
     # --- Lost pointer capture mid-stroke must not lock the board ---
     page.click("[data-seeds='2']")
     page.mouse.move(*g.to_client(*A)); page.mouse.down()

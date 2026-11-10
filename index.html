@@ -300,6 +300,7 @@
   const CLEAR_NEAR = 4;     // minimum gap near seeds
   const STEP = 2.5;         // spacing of recorded stroke points
   const MARGIN = 4;         // vines must stay this far inside the bed
+  const TAP_LEN = 12;       // a stroke shorter than this is a tap, not a failed vine
 
   const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
   const $ = id => document.getElementById(id);
@@ -442,10 +443,11 @@
 
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
-    const bad = drag.invalid;
+    const bad = drag.invalid, len = drag.cum[drag.cum.length - 1];
     drag = null;
     renderStroke(); renderSpots();
     if (bad) setMsg(bad + ' Try again.', true);
+    else if (len < TAP_LEN) setMsg('Drag, don’t tap. Pull the vine from a seed to another seed.');
     else setMsg('Finish your vine on a seed, or loop back to the same seed.', true);
   }
   svg.addEventListener('pointerup', endDrag);
