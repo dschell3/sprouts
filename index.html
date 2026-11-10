@@ -295,9 +295,8 @@
   const CAPTURE_R = 20;     // reaching this close to a seed finishes the vine
   const ARM_R = 36;         // must get this far from the start seed before a loop can close
   const NO_CLEAR_R = 14;    // inside this radius of a seed, vines may touch closely
-  const ZONE_R = 32;        // inside this radius of a seed, a smaller gap is allowed
+  const FULL_CLEAR_R = 60;  // the required gap ramps up from 0 to CLEAR between NO_CLEAR_R and here
   const CLEAR = 7;          // normal minimum gap between vines
-  const CLEAR_NEAR = 4;     // minimum gap near seeds
   const STEP = 2.5;         // spacing of recorded stroke points
   const MARGIN = 4;         // vines must stay this far inside the bed
   const TAP_LEN = 12;       // a stroke shorter than this is a tap, not a failed vine
@@ -491,12 +490,14 @@
     setMsg(reason, true);
   }
 
+  // Vines must keep CLEAR apart, except near seeds, where they all converge anyway. The gap needed
+  // ramps up with distance from the nearest seed, so a stroke that starts beside an existing vine
+  // can still peel away from it.
   function clearanceNeeded(p) {
     let m = Infinity;
     for (const s of spots) m = Math.min(m, dist(p, s));
     if (m < NO_CLEAR_R) return 0;
-    if (m < ZONE_R) return CLEAR_NEAR;
-    return CLEAR;
+    return CLEAR * Math.min(1, (m - NO_CLEAR_R) / (FULL_CLEAR_R - NO_CLEAR_R));
   }
 
   function checkPoint(a, b) {

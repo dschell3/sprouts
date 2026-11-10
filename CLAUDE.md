@@ -51,7 +51,7 @@ All coordinates are in **board units**: the bed is `B = 500` square (SVG viewBox
 - Rejections:
   - out of bounds (`MARGIN`);
   - crossing an existing vine or itself;
-  - clearance: vines must stay `CLEAR` (7) apart, reduced to `CLEAR_NEAR` (4) within `ZONE_R` of a seed, and 0 within `NO_CLEAR_R` of a seed;
+  - clearance: vines must stay `CLEAR` (7) apart. The gap needed is 0 within `NO_CLEAR_R` (14) of a seed and ramps up linearly to `CLEAR` at `FULL_CLEAR_R` (60), so vines can converge on a seed and a stroke can start beside an existing vine;
   - a full target seed;
   - a loop on a seed with fewer than 2 lives.
 - `pickSplit()` places the new seed in the middle 30–70% of the vine, at the point with the most room.

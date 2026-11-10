@@ -134,6 +134,12 @@ with sync_playwright() as pw:
     g.stroke([A, (480, 250), (520, 250)])
     check(g.st()["moves"] == 0 and "garden" in g.msg().lower(), "out-of-bounds rejected; msg=" + g.msg())
 
+    # --- A stroke that starts beside an existing vine can still peel away from it ---
+    page.click("[data-seeds='2']")
+    g.stroke([A] + arc(250, 250, 100, 0, -math.pi)[1:])          # leaves A straight up
+    g.stroke([(352, 225), (400, 190), (440, 250), (400, 340), (250, 370), (100, 300), B])
+    check(g.st()["moves"] == 2, "stroke starting 2 units beside a vine accepted; msg=" + g.msg())
+
     # --- A tap on a seed is a gentle prompt, not an error ---
     page.click("[data-seeds='2']")
     page.mouse.move(*g.to_client(*A)); page.mouse.down(); page.mouse.up()
