@@ -24,8 +24,8 @@ class G:
     def box(self):
         return self.p.locator("#svg").bounding_box()
     def to_client(self, x, y):
-        b = self.box()
-        return b["x"] + (x + 10) / 520 * b["width"], b["y"] + (y + 10) / 520 * b["height"]
+        # map board units to client pixels with the SVG's own transform, so letterboxing is handled
+        return tuple(self.p.evaluate("([x, y]) => { const q = new DOMPoint(x, y).matrixTransform(document.getElementById('svg').getScreenCTM()); return [q.x, q.y]; }", [x, y]))
     def stroke(self, pts):
         pts = interp(pts)
         self.p.mouse.move(*self.to_client(*pts[0]))
