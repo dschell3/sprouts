@@ -127,10 +127,21 @@
   .pop { animation: pop .5s cubic-bezier(.3,1.6,.6,1) both; transform-box: fill-box; transform-origin: center; }
   /* A new vine draws itself from the start seed; the second half waits for the first */
   .grow { animation: grow linear both; }
+  /* Game over: the winner's vines glow, the loser's fade back, leftover shoots wither */
+  .vine { transition: opacity .8s; }
+  #svg[data-over="1"] .vine.p2, #svg[data-over="2"] .vine.p1 { opacity: .4; }
+  #svg[data-over="1"] .vine.p1 { filter: drop-shadow(0 0 3px var(--p1)); }
+  #svg[data-over="2"] .vine.p2 { filter: drop-shadow(0 0 3px var(--p2)); }
+  #svg[data-over] .pip { animation: wither .9s ease-in .3s both; }
+  @keyframes wither { to { opacity: 0; transform: scale(.4); } }
+  #svg[data-over] .pip { transform-box: fill-box; transform-origin: center; }
   @keyframes grow { to { stroke-dashoffset: 0; } }
   @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
   @keyframes pulse { 0%,100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.25); opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .hintring, .pop, .grow { animation: none; } .grow { stroke-dashoffset: 0 !important; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hintring, .pop, .grow { animation: none; } .grow { stroke-dashoffset: 0 !important; }
+    .vine { transition: none; } #svg[data-over] .pip { animation: none; opacity: 0; }
+  }
 
   .msg { color: var(--muted); font-size: 0.92rem; margin: 8px 0 0; text-align: center; min-height: 1.4em; }
   .msg.bad { color: var(--bad); font-weight: 600; }
@@ -806,7 +817,7 @@
     popDelay = 0;
     gEdges.innerHTML = edges.map((e, ei) => {
       const d = pathD(e.pts);
-      let cls = 'vine', hi = 'vine-hi', anim = '';
+      let cls = 'vine p' + e.player, hi = 'vine-hi', anim = '';
       if (growFrom >= 0 && ei >= growFrom) {
         const L = pathLen(e.pts), dur = L / GROW_SPEED;
         cls += ' grow'; hi += ' grow';
@@ -846,6 +857,7 @@
   function renderStatus() {
     const max = 3 * n - 1;
     $('turnRing').style.stroke = PCOL[over ? winner : player];
+    if (over) svg.setAttribute('data-over', winner); else svg.removeAttribute('data-over');
     if (over) {
       $('turn').innerHTML = `<span class="chip" style="background:${PCOL[winner]}"></span>Player ${winner} wins!`;
       $('count').textContent = `${moveCount} moves`;
