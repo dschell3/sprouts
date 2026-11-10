@@ -63,6 +63,8 @@ with sync_playwright() as pw:
     page.on("pageerror", lambda e: errs.append(str(e)))
     page.goto(URL)
     g = G(page)
+    folds = page.evaluate("[...document.querySelectorAll('details.fold')].map(d => d.open)")
+    check(folds == [True, False, False], f"on desktop only Settings starts open: {folds}")
 
     # --- Scripted 2-seed game: A=(350,250), B=(150,250) ---
     page.click("[data-seeds='2']")
@@ -227,6 +229,9 @@ with sync_playwright() as pw:
     # Mobile screenshot
     m = br.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
     m.goto(URL)
+    folds = m.evaluate("[...document.querySelectorAll('details.fold')].map(d => d.open)")
+    check(folds == [False, False, False], f"all side cards start folded on a phone: {folds}")
+    m.click("#settingsFold summary")
     m.click("[data-seeds='5']")
     m.screenshot(path=str(OUT / "mobile.png"))
     br.close()

@@ -36,6 +36,7 @@ Keep the game as **one self-contained `index.html`**: no build step, no framewor
 - A small **"Give up"** link under the controls (two taps to confirm) hands the win to the other player. It can be removed if it proves unwanted.
 - **No persistence.** Scores and settings live only for the page session.
 - Player names stay "Player 1" / "Player 2". Colors: P1 green, P2 terracotta.
+- The side cards fold: Move log and Scoreboard start collapsed everywhere, Settings starts collapsed on phones (≤840px) and open on desktop.
 - **Theme:** garden/greenhouse (seeds, vines, soil bed, wooden frame), styled like the owner's earlier "Coffee Shop Expedition" game: cards, pills, a move log, a scoreboard, and "How to play" details. Light and dark mode via CSS variables. The backup theme idea is retro arcade / Pac-Man (wraparound fits the torus).
 - Owner's writing style for UI text: simple, short sentences.
 
