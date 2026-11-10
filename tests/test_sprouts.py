@@ -91,6 +91,10 @@ with sync_playwright() as pw:
     g.stroke([(C[0], C[1]), (C[0], C[1] - 60)])
     check(g.st()["moves"] == 3 and "full" in g.msg(), "full seed rejected; msg=" + g.msg())
 
+    # Brushing past full seed C (within CAPTURE_R) is a different message from starting on it
+    g.stroke([A, (300, 180), (262, 165), (200, 170)])
+    check(g.st()["moves"] == 3 and "touched a full seed" in g.msg(), "brushing a full seed explained; msg=" + g.msg())
+
     # Move 4: A -> B around the outside top (big arc, radius 190)
     pts = [A, (440, 250)] + arc(250, 250, 190, 0, -math.pi)[1:] + [(60, 250), B]
     g.stroke(pts)

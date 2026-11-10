@@ -523,7 +523,7 @@
     const d = drag, s = spots[i];
     if (i === d.start) {
       if (lives(s) < 2) { fail('A loop needs 2 free shoots on its seed.'); return; }
-    } else if (lives(s) <= 0) { fail('That seed is full. It already has 3 vines.'); return; }
+    } else if (lives(s) <= 0) { fail('Your vine touched a full seed. Go around it.'); return; }
     const a = d.pts[d.pts.length - 1], b = { x: s.x, y: s.y };
     for (const sg of segs) if (segX(a.x, a.y, b.x, b.y, sg[0], sg[1], sg[2], sg[3])) { fail('Vines can’t cross each other.'); return; }
     const P = d.pts;
