@@ -153,6 +153,13 @@ with sync_playwright() as pw:
     g.stroke([(352, 225), (400, 190), (440, 250), (400, 340), (250, 370), (100, 300), B])
     check(g.st()["moves"] == 2, "stroke starting 2 units beside a vine accepted; msg=" + g.msg())
 
+    # --- Two vines started by touching the same spot on a seed must not "cross" at the stub ---
+    page.click("[data-seeds='2']")
+    T = (358, 250)                      # 8 units right of A's centre, inside the seed body
+    g.stroke([T] + arc(250, 250, 100, 0, -math.pi)[1:])
+    g.stroke([T] + arc(250, 250, 100, 0, math.pi)[1:])
+    check(g.st()["moves"] == 2, "second vine from the same touch spot accepted; msg=" + g.msg())
+
     # --- A tap on a seed is a gentle prompt, not an error ---
     page.click("[data-seeds='2']")
     page.mouse.move(*g.to_client(*A)); page.mouse.down(); page.mouse.up()

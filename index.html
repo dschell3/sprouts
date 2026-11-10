@@ -485,7 +485,6 @@
     drag = { id: e.pointerId, start: best, pts: [{ x: s.x, y: s.y }], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
     hintSpots = null;
     setMsg('Now reach another seed, or loop back to this one.');
-    addPoint({ x: p.x, y: p.y });
     renderStroke(); renderSpots();
   });
 
@@ -520,6 +519,10 @@
   svg.addEventListener('contextmenu', e => e.preventDefault());   // long-press menu on Android
 
   function addPoint(q) {
+    // Nothing is recorded while the finger is still on the seed body. The vine's first segment
+    // then runs from the centre in the direction the finger left, not toward where it landed,
+    // so two vines started from the same spot on a seed don't share an overlapping stub.
+    if (drag.pts.length === 1 && dist(q, spots[drag.start]) < SPOT_R) return;
     const last = drag.pts[drag.pts.length - 1];
     const d = dist(q, last);
     if (d < STEP) return;
