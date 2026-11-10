@@ -307,7 +307,8 @@
   const STEP = 2.5;         // spacing of recorded stroke points
   const MARGIN = 4;         // vines must stay this far inside the bed
   const TAP_LEN = 12;       // a stroke shorter than this is a tap, not a failed vine
-  const SEED_GAP_V = SPOT_R + 2;   // a new seed needs this much room from other vines
+  const SEED_GAP_V = CAPTURE_R + 2; // a new seed needs this much room from other vines, so no vine ever
+                                    // runs inside a seed's capture disc (analysis relies on this)
   const SEED_GAP_S = 2 * SPOT_R;   // and this much from other seeds, so seeds never overlap
 
   const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
@@ -608,11 +609,13 @@
   // ---- Region analysis ----
   // Draw every vine onto a hidden grid as a wall as wide as the clearance rule demands, so two
   // vines too close for a third to pass between them merge into one wall. Every seed becomes a disc
-  // of CAPTURE_R (a vine that gets that close finishes there), and the bed margin is a wall too.
-  // Flood-fill the free pixels into regions. The regions a seed touches are the labels found on a
-  // ring just outside its disc. A move exists if some region has 2+ free shoots on its border.
+  // of DISC_R (a vine that gets within CAPTURE_R finishes there), and the bed margin is a wall too.
+  // Flood-fill the free pixels into regions. The regions a seed touches are found by walking
+  // outward from its centre in every direction and taking the first free pixel, which lies between
+  // the disc and anything else. A move exists if some region has 2+ free shoots on its border.
   // The raster never demands more room than the drawing rules do, so if it says a face is closed,
   // no vine can be drawn through it either.
+  const DISC_R = CAPTURE_R - 2;
   const RING_R = CAPTURE_R + 2;
   const MID_R = (NO_CLEAR_R + FULL_CLEAR_R) / 2;
   function labelAt(x, y) {
@@ -654,7 +657,7 @@
     strokeVines(2 * CLEAR);
     thinNearSeeds(FULL_CLEAR_R, 2 * clearanceAt(MID_R));
     thinNearSeeds(MID_R, 0.75);
-    seedDiscs(CAPTURE_R); rctx.fill();
+    seedDiscs(DISC_R); rctx.fill();
     rctx.fillRect(0, 0, B, MARGIN); rctx.fillRect(0, B - MARGIN, B, MARGIN);
     rctx.fillRect(0, 0, MARGIN, B); rctx.fillRect(B - MARGIN, 0, MARGIN, B);
 
@@ -678,9 +681,11 @@
     const regionsOf = spots.map(s => {
       const set = new Set();
       for (let k = 0; k < 72; k++) {
-        const a = k * Math.PI / 36;
-        const l = labelAt(s.x + RING_R * Math.cos(a), s.y + RING_R * Math.sin(a));
-        if (l >= 0) set.add(l);
+        const a = k * Math.PI / 36, cx = Math.cos(a), cy = Math.sin(a);
+        for (let r = DISC_R - 1; r <= RING_R; r += 0.5) {
+          const l = labelAt(s.x + r * cx, s.y + r * cy);
+          if (l >= 0) { set.add(l); break; }
+        }
       }
       return [...set];
     });

@@ -182,19 +182,19 @@ with sync_playwright() as pw:
     g.load(*lane_position(8))
     g.stroke([(100, 250), (400, 250)])
     check(g.st()["moves"] == 0 and "No room" in g.msg(), "vine with no room for a seed rejected; msg=" + g.msg())
-    g.load(*lane_position(20))
+    g.load(*lane_position(24))
     g.stroke([(100, 250), (400, 250)])
     check(g.st()["moves"] == 1, "same vine with room accepted; msg=" + g.msg())
 
     # --- Analysis matches the drawing rules: a doorway too narrow to draw through is closed ---
     def two_rooms(door):
         # P in the left room and Q in the right, split by a wall of full seeds with a gap of `door`
-        sp = [seed(100, 250, 2), seed(400, 250, 2), seed(250, 24, 3), seed(250, 250 - door / 2, 3),
-              seed(250, 250 + door / 2, 3), seed(250, 476, 3)]
-        return sp, [edge(2, 3, [(250, 24), (250, 250 - door / 2)]), edge(4, 5, [(250, 250 + door / 2), (250, 476)])]
-    g.load(*two_rooms(36))      # the two door posts' capture discs overlap: nothing fits
+        sp = [seed(100, 250, 2), seed(400, 250, 2), seed(250, 20, 3), seed(250, 250 - door / 2, 3),
+              seed(250, 250 + door / 2, 3), seed(250, 480, 3)]
+        return sp, [edge(2, 3, [(250, 20), (250, 250 - door / 2)]), edge(4, 5, [(250, 250 + door / 2), (250, 480)])]
+    g.load(*two_rooms(34))      # the two door posts' discs overlap: nothing fits
     s = g.st()
-    check(not s["movable"], f"36-unit doorway between full seeds counts as closed: movable={s['movable']} regions={s['regions']}")
+    check(not s["movable"], f"34-unit doorway between full seeds counts as closed: movable={s['movable']} regions={s['regions']}")
     g.load(*two_rooms(80))
     s = g.st()
     check(s["movable"] and sorted(s["hint"]) == [0, 1], f"80-unit doorway is open: movable={s['movable']} hint={s['hint']}")
@@ -210,6 +210,13 @@ with sync_playwright() as pw:
     page.click("#btnGiveUp")
     s = g.st()
     check(s["over"] and s["winner"] == 1, f"player 2 gave up, player 1 wins: over={s['over']} winner={s['winner']}")
+
+    # --- A vine skimming a live seed (just outside CAPTURE_R) must not credit it with the far face ---
+    # P and Q are each alone in their own face; the wall between them runs 20.5 units from P.
+    sp = [seed(100, 250, 2), seed(400, 250, 2), seed(120.5, 20, 3), seed(120.5, 480, 3)]
+    g.load(sp, [edge(2, 3, [(120.5, 20), (120.5, 480)])])
+    s = g.st()
+    check(not s["movable"], f"seed beside a skimming wall stays in its own face: movable={s['movable']} regions={s['regions']}")
 
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
