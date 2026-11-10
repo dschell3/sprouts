@@ -42,6 +42,13 @@ class G:
                   spots: s.spots.map(p => [Math.round(p.x), Math.round(p.y), p.deg])}; }""")
     def msg(self):
         return self.p.inner_text("#msg")
+    def load(self, spots, edges):
+        self.p.evaluate("st => window.__sprouts.load(st)", {"spots": spots, "edges": edges})
+
+def seed(x, y, deg=0):
+    return {"x": x, "y": y, "deg": deg}
+def edge(a, b, pts):
+    return {"a": a, "b": b, "pts": [{"x": x, "y": y} for x, y in pts]}
 
 fails = []
 def check(cond, label):
@@ -158,6 +165,13 @@ with sync_playwright() as pw:
     # no pointerup ever arrives; the next stroke starts with the button still "down"
     g.stroke([A] + arc(250, 250, 100, 0, -math.pi)[1:])
     check(g.st()["moves"] == 1, "stroke accepted after a lost pointer capture; msg=" + g.msg())
+
+    # --- load() hook: a hand-built position round-trips ---
+    g.load([seed(100, 250), seed(400, 250, 2), seed(250, 100, 3)],
+           [edge(1, 2, [(400, 250), (350, 150), (250, 100)])])
+    s = g.st()
+    check(s["spots"] == [[100, 250, 0], [400, 250, 2], [250, 100, 3]] and s["moves"] == 0 and s["movable"],
+          f"loaded position: {s['spots']} movable={s['movable']}")
 
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")

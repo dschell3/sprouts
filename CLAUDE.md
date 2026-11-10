@@ -66,7 +66,7 @@ All coordinates are in **board units**: the bed is `B = 500` square (SVG viewBox
 Why raster: the same flood fill works on a torus or Klein bottle by wrapping neighbours across edges.
 Known weak spot: in very cramped drawings, a face could be missed, which would cause a false "game over". The clearance rules exist to prevent this. If tuning clearance, keep the raster gap ≥ ~2px.
 
-**Test hook:** `window.__sprouts.state()` exposes state for tests. Keep it.
+**Test hook:** `window.__sprouts.state()` exposes state for tests, and `window.__sprouts.load({spots, edges})` replaces the board with a hand-built position (seeds `{x, y, deg}`, edges `{a, b, pts}`; vine ends are snapped to their seeds). Keep both.
 
 ## Testing
 

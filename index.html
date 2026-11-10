@@ -835,8 +835,22 @@
   $('btnHint').addEventListener('click', showHint);
   $('btnNew').addEventListener('click', newGame);
 
-  // Small hook for automated testing; harmless in normal play.
-  window.__sprouts = { state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode }) };
+  // Small hook for automated testing; harmless in normal play. load() replaces the board with a
+  // hand-built position so tests can check analysis and placement without drawing every vine.
+  window.__sprouts = {
+    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode }),
+    load: st => {
+      spots = st.spots.map(s => ({ x: s.x, y: s.y, deg: s.deg }));
+      edges = st.edges.map(e => ({ a: e.a, b: e.b, player: e.player || 1, pts: e.pts.map(p => ({ x: p.x, y: p.y })) }));
+      for (const e of edges) {   // vine ends must share the seed's exact coordinates
+        e.pts[0] = { x: spots[e.a].x, y: spots[e.a].y };
+        e.pts[e.pts.length - 1] = { x: spots[e.b].x, y: spots[e.b].y };
+      }
+      log = []; moveCount = st.moveCount || 0; player = st.player || 1; over = false; winner = 0; overText = '';
+      hintSpots = null; popIdx = -1; drag = null; showHintBtn = false;
+      rebuildSegs(); analyze(); setMsg(defaultMsg()); render();
+    },
+  };
 
   newGame();
 })();
