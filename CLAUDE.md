@@ -2,7 +2,7 @@
 
 A mobile-friendly, browser-based version of the pencil-and-paper graph theory game **Sprouts** (Conway & Paterson, 1967). It's being built for a math professor's classes. Brussels Sprouts and other play surfaces come later.
 
-Owner: Darren (GitHub: dschell3). Hosted as a **GitHub Page**.
+Owner: Darren (GitHub: dschell3). Hosted as a **GitHub Page** at https://dschell3.github.io/sprouts/, deployed by `.github/workflows/static.yml` on every push to `main` (Pages source: GitHub Actions).
 
 ## Repo layout
 
