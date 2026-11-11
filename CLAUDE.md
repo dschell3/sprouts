@@ -1,6 +1,6 @@
 # Sprouts (garden theme)
 
-A mobile-friendly, browser-based version of the pencil-and-paper graph theory game **Sprouts** (Conway & Paterson, 1967). It's being built for a math professor's classes. It plays on the square, the torus and the Klein bottle. Brussels Sprouts comes later.
+A mobile-friendly, browser-based version of the pencil-and-paper graph theory game **Sprouts** (Conway & Paterson, 1967). It's being built for a math professor's classes. It plays on the square, the torus and the Klein bottle, and has a Brussels Sprouts variant.
 
 Owner: Darren (GitHub: dschell3). Hosted as a **GitHub Page** at https://dschell3.github.io/sprouts/, deployed by `.github/workflows/static.yml` on every push to `main` (Pages source: GitHub Actions).
 
@@ -22,6 +22,15 @@ Keep the game as **one self-contained `index.html`**: no build step, no framewor
 - A seed holds at most 3 vine ends. A loop uses 2 of them.
 - Normal play: the player who cannot move loses, so the last player to move wins. **No misère mode.**
 - Facts shown in the UI: a game lasts at most 3n − 1 moves (true on every surface) and, on the flat square, at least 2n moves. The "n mod 6" winner conjecture is marked as a flat-square result.
+
+## Brussels Sprouts (variant)
+
+- Chosen with the **Game** pills, the "Switch to …" link under the subtitle, or `#brussels` in the address (`setVariant`; the hash is kept in sync with `history.replaceState`, which is not storage). 1 to 6 crosses. Its own scoreboard table.
+- Seeds are **crosses** (`spot.arms`: four `{dx, dy, used, seg}`), drawn as an upright plus with `ARM_LEN` (16) arms. A vine starts and ends at a **free arm tip** (`ports()`); joining two arms of the same cross is allowed. Arms with `seg` are obstacles like vines (they are in `segs` and in the raster).
+- The new cross sits at the split point with two arms along the vine (used, not drawn or in `segs`, since the vine covers them) and a free bar across it. `barFits` requires both bar tips to have `CLEAR` from everything and to be inside the bed.
+- Analysis: each free tip is credited with the face found just past its capture disc, looking along the arm in a small fan (`firstFree`). A move exists if some face holds two free tips. Capture discs are drawn at free tips (`blockDiscs`), while the clearance relaxation stays around centres (`seedDiscs`).
+- No facts or stats are shown for Brussels. The win box just asks whether the length and winner change. (On the flat square every game lasts exactly 5n − 2 moves; on the torus and Klein bottle it runs between 5n − 2 and 5n, since a loop around the surface does not split a face. Not shown in the UI by the owner's choice.)
+- Undo is deferred until the computer opponent exists.
 
 ## Surfaces
 
@@ -51,7 +60,7 @@ Keep the game as **one self-contained `index.html`**: no build step, no framewor
 
 All coordinates are in **board units**: the bed is `B = 500` square (SVG viewBox `-10 -10 520 520`, frame outside 0..500).
 
-**State:** `spots[] {x, y, deg}`, `edges[] {a, b, pts[], breaks[], player}`, `segs[]` (flattened segments `[x1,y1,x2,y2,edgeIndex]`), `log[]`, `scores{}`, `surface`, `pending` (a stroke waiting at a seam).
+**State:** `variant`, `spots[] {x, y, deg, arms?}`, `edges[] {a, b, pts[], breaks[], player}`, `segs[]` (flattened segments `[x1,y1,x2,y2,edgeIndex]`), `log[]`, `scores{}`, `surface`, `pending` (a stroke waiting at a seam).
 - Each move is stored as **two edges** split at the new seed, so there are never self-loop edges.
 - Vines always live in square coordinates. On a glued surface a vine is cut at the seams into pieces: `breaks` lists the indices in `pts` where a new piece starts, and `pts[k-1] -> pts[k]` is not a segment when `k` is a break. `segs`, the raster and the SVG paths all work on pieces.
 - **Surface helpers** (`SURFACES`, `images`, `unmap`, `wrapPt`, `seamExit`, `distToSegs`, `nearestSeed`, `eachCopy`): every distance check takes the minimum over a point's images in the neighbouring copies of the square, flipped where the surface says so. On the square they reduce to the plain checks.
@@ -97,6 +106,7 @@ The tests drive real mouse strokes through the SVG:
 - 8-seed layout;
 - torus: seam exit and pick-up, a loop around the torus that fences nothing off and a vine reaching it the long way round, clearance across a seam, end detection across a seam;
 - Klein bottle: a vine leaving the top comes back mirrored at the bottom; left/right glued straight; dropping a waiting vine;
+- Brussels Sprouts: switching by pill, header link and address; a full one-cross game that ends after exactly 3 moves; a vine can't cross an arm; a loop between two arms of one cross; a seam crossing on the torus;
 - no page errors.
 
 They also save `tests/mobile.png` (390×844) and `tests/desktop_over.png` screenshots, so look at them after UI changes.
@@ -108,11 +118,7 @@ They also save `tests/mobile.png` (390×844) and `tests/desktop_over.png` screen
 1. **Polish Sprouts from real phone testing.** Watch for: clearance strictness, seed size (currently `SPOT_R` 14), whether the "Too close" message hides real crossings, and accidental auto-complete near seeds.
 2. **Surfaces**: Square, Torus and Klein bottle are done (see Surfaces above). Cylinder, Möbius strip and projective plane are one row each in `SURFACES` (`gx`/`gy` of `none`, `glue` or `flip`) plus a pill, if the professor wants them. Test the seam pick-up on real phones.
 3. **Computer opponent.** Only practical for small *n* (about 2–5). It will reuse `analyze()` to find legal moves.
-4. **Brussels Sprouts.** Not yet decided whether it is a separate page or a toggle/tab here.
-   - Seeds are crosses with 4 arms. A move joins two free arms, and a new cross is placed on the vine, which uses 2 of its arms (one free arm on each side).
-   - Every game lasts exactly 5n − 2 moves, so the winner is fixed by *n*. Present it as a "why is the winner fixed?" puzzle.
-   - Owner wants **undo** in Brussels Sprouts when playing the computer.
-   - Same surfaces and opponent options as Sprouts.
+4. **Brussels Sprouts** is done (see above). Still to come with the computer opponent: **undo** when playing the computer.
 
 ## Conventions
 

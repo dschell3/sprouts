@@ -37,7 +37,7 @@ class G:
         self.p.mouse.up()
     def st(self):
         return self.p.evaluate("""() => { const s = window.__sprouts.state();
-          return {moves: s.moveCount, player: s.player, over: s.over, winner: s.winner, surface: s.surface,
+          return {moves: s.moveCount, player: s.player, over: s.over, winner: s.winner, surface: s.surface, variant: s.variant, n: s.n,
                   movable: s.analysis.movable, hint: s.analysis.hint, regions: s.analysis.regions,
                   spots: s.spots.map(p => [Math.round(p.x), Math.round(p.y), p.deg])}; }""")
     def msg(self):
@@ -303,6 +303,62 @@ with sync_playwright() as pw:
     s = g.st()
     check(pend() is None and s["moves"] == 2, f"starting a new vine drops the waiting one: pending={pend()} moves={s['moves']} msg={g.msg()}")
     page.click("[data-surface='square']")
+
+    # ================= Brussels Sprouts =================
+    # --- Switching games: pill, header link and address ---
+    page.click("[data-game='brussels']")
+    s = g.st()
+    pills = page.evaluate("[...document.querySelectorAll('[data-seeds]')].map(b => +b.dataset.seeds)")
+    check(s["variant"] == "brussels" and pills == [1, 2, 3, 4, 5, 6] and page.evaluate("location.hash") == "#brussels"
+          and page.inner_text("#title") == "Brussels Sprouts", f"Brussels via pill: {s['variant']} pills={pills} hash={page.evaluate('location.hash')}")
+    page.click("#switch a")
+    page.wait_for_function("document.getElementById('title').textContent === 'Sprouts'")
+    s = g.st()
+    check(s["variant"] == "sprouts" and page.evaluate("location.hash") in ("", "#sprouts") and page.inner_text("#title") == "Sprouts",
+          f"back to Sprouts via the header link: {s['variant']} hash={page.evaluate('location.hash')}")
+    page.goto(URL + "#brussels")
+    s = g.st()
+    check(s["variant"] == "brussels" and 1 <= s["n"] <= 6, f"opening the address with #brussels starts Brussels: {s['variant']} n={s['n']}")
+    page.goto(URL)
+    g = G(page)
+
+    # --- A one-cross game: exactly 5n - 2 = 3 moves, Player 1 wins ---
+    def crosses():
+        return page.evaluate("window.__sprouts.state().spots.map(s => ({x: s.x, y: s.y, tips: s.arms.filter(a => !a.used).map(a => [s.x + a.dx, s.y + a.dy])}))")
+    page.click("[data-game='brussels']"); page.click("[data-seeds='1']")
+    c = crosses()
+    check(len(c) == 1 and c[0]["x"] == 250 and len(c[0]["tips"]) == 4, f"one upright cross with 4 free arms: {c}")
+    E, S_, W, N = (266, 250), (250, 266), (234, 250), (250, 234)
+    g.stroke([E, (300, 250), (300, 200), (250, 200), N])            # move 1: E arm to N arm round the corner
+    s = g.st(); c = crosses()
+    check(s["moves"] == 1 and len(c) == 2 and len(c[0]["tips"]) == 2 and len(c[1]["tips"]) == 2,
+          f"move 1 joined two arms, new cross has 2 free tips: moves={s['moves']} {c} msg={g.msg()}")
+    # a stroke from the new cross's inside tip toward the centre must not cross the E arm
+    inner = min(c[1]["tips"], key=lambda q: math.hypot(q[0] - 250, q[1] - 250))
+    g.stroke([tuple(inner), (255, 262)])
+    check(g.st()["moves"] == 1 and "cross" in g.msg(), "a vine can't cross a cross's arm; msg=" + g.msg())
+    g.stroke([W, (200, 250), (200, 300), (250, 300), S_])           # move 2: W to S, a loop on the same cross
+    s = g.st()
+    check(s["moves"] == 2 and "one cross" in page.text_content("#log"), f"move 2 joined two arms of one cross: moves={s['moves']} msg={g.msg()}")
+    c = crosses()
+    outs = [max(cc["tips"], key=lambda q: math.hypot(q[0] - 250, q[1] - 250)) for cc in c[1:3]]
+    # move 3: the two outside tips, round the outside of everything
+    def radial(q, k):   # the point k units straight out from tip q, away from the board centre
+        d = math.hypot(q[0] - 250, q[1] - 250); return (250 + (q[0] - 250) / d * (d + k), 250 + (q[1] - 250) / d * (d + k))
+    a0 = math.atan2(outs[0][1] - 250, outs[0][0] - 250); a1 = math.atan2(outs[1][1] - 250, outs[1][0] - 250)
+    if a1 < a0: a1 += 2 * math.pi
+    g.stroke([tuple(outs[0]), radial(outs[0], 40)] + arc(250, 250, 190, a0, a1)[1:] + [radial(outs[1], 40), tuple(outs[1])])
+    s = g.st()
+    check(s["moves"] == 3 and s["over"] and s["winner"] == 1, f"one-cross game ends after 3 moves, P1 wins: moves={s['moves']} over={s['over']} winner={s['winner']} msg={g.msg()}")
+
+    # --- Brussels on the torus: a vine crosses the seam and finishes at a free tip ---
+    page.click("[data-surface='torus']"); page.click("[data-seeds='1']")
+    g.stroke([E, (400, 250), (525, 250)])
+    check(pend() is not None, f"Brussels vine waits at the seam: {pend()}")
+    g.stroke([(3, 250), (100, 250), (200, 250), W])
+    s = g.st()
+    check(s["moves"] == 1 and len(crosses()) == 2, f"picked up and finished at the W tip: moves={s['moves']} msg={g.msg()}")
+    page.click("[data-surface='square']"); page.click("[data-game='sprouts']")
 
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")

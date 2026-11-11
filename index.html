@@ -70,6 +70,8 @@
   h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; display: inline-flex; align-items: center; gap: 8px; }
   h1 svg { width: 30px; height: 30px; }
   .sub { margin: 6px auto 0; color: var(--muted); max-width: 560px; text-wrap: balance; }
+  .switch { margin: 6px 0 0; color: var(--muted); font-size: 0.88rem; }
+  .switch a { color: var(--p1); font-weight: 600; }
 
   main {
     display: grid;
@@ -124,6 +126,9 @@
   .pickup { fill: none; stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .seed-body { fill: url(#seedFill); stroke: var(--ring); stroke-width: 2.5; }
   .wilt .seed-body { fill: url(#wiltFill); }
+  .arm { stroke: var(--seed); stroke-width: 4; stroke-linecap: round; }
+  .wilt .arm { stroke: var(--wilt); }
+  .cross .seed-body { stroke-width: 1.5; }
   .pip { fill: var(--pip); }
   .ring { fill: none; stroke-width: 3; stroke-dasharray: 4 4; }
   .hintring { fill: none; stroke: var(--hint); stroke-width: 3.5; animation: pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
@@ -209,9 +214,10 @@
         <path d="M16 17 C 9 17 5 12 5 6 C 12 6 16 10 16 17 Z" fill="var(--p1)"/>
         <path d="M16 14 C 22 14 27 10 27 4 C 20 4 16 8 16 14 Z" fill="var(--pip)" stroke="var(--p1)" stroke-width="1.5"/>
       </svg>
-      Sprouts
+      <span id="title">Sprouts</span>
     </h1>
-    <p class="sub">Grow vines between seeds. Every vine sprouts a new seed. If you can't grow a vine on your turn, you lose.</p>
+    <p class="sub" id="sub">Grow vines between seeds. Every vine sprouts a new seed. If you can't grow a vine on your turn, you lose.</p>
+    <p class="switch" id="switch"></p>
   </header>
 
   <main>
@@ -261,7 +267,14 @@
         <details class="fold" id="settingsFold" open>
         <summary><h2>Settings</h2></summary>
         <div class="row">
-          <p class="row-label">Starting seeds</p>
+          <p class="row-label">Game</p>
+          <div class="pills" role="group" aria-label="Game">
+            <button class="pill" data-game="sprouts">Sprouts</button>
+            <button class="pill" data-game="brussels">Brussels Sprouts</button>
+          </div>
+        </div>
+        <div class="row">
+          <p class="row-label" id="seedLabel">Starting seeds</p>
           <div class="pills" id="seedPills" role="group" aria-label="Starting seeds"></div>
         </div>
         <div class="row">
@@ -278,7 +291,7 @@
             <button class="pill" data-helpers="on">On</button>
             <button class="pill" data-helpers="off">Off</button>
           </div>
-          <p class="note">Green dots show how many vines a seed can still take. Full seeds turn grey.</p>
+          <p class="note" id="helpersNote">Green dots show how many vines a seed can still take. Full seeds turn grey.</p>
         </div>
         <div class="row">
           <p class="row-label">Surface</p>
@@ -304,14 +317,14 @@
         <details class="fold">
         <summary><h2>Scoreboard</h2></summary>
         <table>
-          <thead><tr><th>Seeds</th><th>Games</th><th>P1 wins</th><th>P2 wins</th></tr></thead>
+          <thead><tr><th id="scoreHead">Seeds</th><th>Games</th><th>P1 wins</th><th>P2 wins</th></tr></thead>
           <tbody id="scores"></tbody>
         </table>
         </details>
       </section>
 
       <section class="card">
-        <details>
+        <details id="howSprouts">
           <summary>How to play</summary>
           <ol>
             <li>The garden starts with a few seeds. Player 1 goes first.</li>
@@ -322,6 +335,17 @@
             <li>If you can't grow a vine on your turn, you lose. The last player to move wins.</li>
           </ol>
         </details>
+        <details id="howBrussels" hidden>
+          <summary>How to play</summary>
+          <ol>
+            <li>The garden starts with a few crosses. Each cross has 4 free arms. Player 1 goes first.</li>
+            <li>On your turn, drag a vine from a free arm to another free arm. It can be an arm of the same cross.</li>
+            <li>A new cross grows across the middle of your vine. It has 2 free arms, one on each side.</li>
+            <li>Vines can't cross each other, themselves, or the arms of a cross.</li>
+            <li>Each arm takes one vine.</li>
+            <li>If you can't join two arms on your turn, you lose. The last player to move wins.</li>
+          </ol>
+        </details>
         <details>
           <summary>Auto vs Challenge</summary>
           <ul>
@@ -329,7 +353,7 @@
             <li><strong>Challenge:</strong> the game never tells you it's over. When you think you have no move, tap "I'm stuck". The game checks your claim.</li>
           </ul>
         </details>
-        <details>
+        <details id="curious">
           <summary>For the curious (spoilers)</summary>
           <ul>
             <li>Each seed starts with 3 free shoots. A move uses 2 shoots, and the new seed brings 1. So every move removes exactly 1 shoot from the garden.</li>
@@ -367,6 +391,7 @@
   const SEED_GAP_V = CAPTURE_R + 2; // a new seed needs this much room from other vines, so no vine ever
                                     // runs inside a seed's capture disc (analysis relies on this)
   const SEED_GAP_S = 2 * SPOT_R;   // and this much from other seeds, so seeds never overlap
+  const ARM_LEN = 16;              // Brussels Sprouts: length of a cross's arms
 
   const PCOL = { 1: 'var(--p1)', 2: 'var(--p2)' };
   const $ = id => document.getElementById(id);
@@ -379,15 +404,17 @@
   const stack = new Int32Array(R * R);
 
   // ---- Game state ----
-  let n = 4, mode = 'auto', helpers = true, surface = 'square';
+  let n = 4, mode = 'auto', helpers = true, surface = 'square', variant = 'sprouts';
+  const brussels = () => variant === 'brussels';
+  const SEEDS = { sprouts: [2, 8], brussels: [1, 6] };   // seed-count range per game
   let spots = [], edges = [], segs = [], log = [];
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
   let hintSpots = null, popIdx = -1, drag = null, pending = null, showHintBtn = false, giveUpArmed = 0;
   let growFrom = -1, popDelay = 0;   // edges from this index on animate in; the new seed pops after the first half
   const GROW_SPEED = 900;            // board units per second
-  const scores = {};
-  for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
+  const scores = { sprouts: {}, brussels: {} };
+  for (const v in SEEDS) for (let k = SEEDS[v][0]; k <= SEEDS[v][1]; k++) scores[v][k] = { games: 0, p1: 0, p2: 0 };
 
   // ---- Geometry helpers ----
   function orient(ax, ay, bx, by, cx, cy) { return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); }
@@ -425,7 +452,14 @@
     return Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
   }
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const lives = s => 3 - s.deg;
+  const lives = s => s.arms ? s.arms.filter(a => !a.used).length : 3 - s.deg;
+  // Where vines start and end. Sprouts: the seed centre. Brussels Sprouts: each free arm tip.
+  function ports(s, i) {
+    if (!s.arms) return [{ x: s.x, y: s.y, spot: i, arm: -1 }];
+    const out = [];
+    s.arms.forEach((a, k) => { if (!a.used) out.push({ x: s.x + a.dx, y: s.y + a.dy, spot: i, arm: k }); });
+    return out;
+  }
 
   // ---- Surfaces ----
   // A surface is the square with some edges glued. 'glue' joins an edge to its opposite straight
@@ -498,19 +532,32 @@
     }
     return m;
   }
-  // Nearest seed to w across the seams: its index, distance and the copy it was seen in.
-  function nearestSeed(w, pad, skip) {
-    let best = -1, bd = Infinity, img = null;
+  // Nearest seed centre to w across the seams: its index and distance.
+  function nearestCentre(w, pad) {
+    let best = -1, bd = Infinity;
     for (const q of images(w, pad)) spots.forEach((s, i) => {
-      if (i === skip) return;
       const d = dist(q, s);
-      if (d < bd) { bd = d; best = i; img = q; }
+      if (d < bd) { bd = d; best = i; }
     });
-    return { i: best, d: bd, img };
+    return { i: best, d: bd };
+  }
+  // Nearest port (seed centre, or free arm tip) to w across the seams, with the copy it was seen
+  // in. `skip(port)` can rule ports out.
+  function nearestPort(w, pad, skip) {
+    let best = null, bd = Infinity, img = null;
+    for (const q of images(w, pad)) spots.forEach((s, i) => {
+      for (const pt of ports(s, i)) {
+        if (skip && skip(pt)) continue;
+        const d = dist(q, pt);
+        if (d < bd) { bd = d; best = pt; img = q; }
+      }
+    });
+    return { port: best, d: bd, img };
   }
 
   function rebuildSegs() {
     segs = [];
+    for (const s of spots) if (s.arms) for (const a of s.arms) if (a.seg) segs.push([s.x, s.y, s.x + a.dx, s.y + a.dy, -1]);
     edges.forEach((e, ei) => {
       const P = e.pts;
       for (let k = 0; k < P.length - 1; k++) {
@@ -521,13 +568,18 @@
   }
 
   // ---- Setup ----
+  function cross(x, y) {   // an upright plus with four free arms
+    const arms = [[1, 0], [0, 1], [-1, 0], [0, -1]].map(([dx, dy]) => ({ dx: dx * ARM_LEN, dy: dy * ARM_LEN, used: false, seg: true }));
+    return { x, y, deg: 0, arms };
+  }
   function layout(count) {
-    const r = count <= 2 ? 100 : count <= 4 ? 135 : 165;
+    const r = count <= 1 ? 0 : count <= 2 ? 100 : count <= 4 ? 135 : 165;
     const off = -Math.PI / 2 + (count % 2 === 0 ? Math.PI / count : 0);
     const out = [];
     for (let i = 0; i < count; i++) {
       const a = off + i * 2 * Math.PI / count;
-      out.push({ x: Math.round(B / 2 + r * Math.cos(a)), y: Math.round(B / 2 + r * Math.sin(a)), deg: 0 });
+      const x = Math.round(B / 2 + r * Math.cos(a)), y = Math.round(B / 2 + r * Math.sin(a));
+      out.push(brussels() ? cross(x, y) : { x, y, deg: 0 });
     }
     return out;
   }
@@ -543,7 +595,7 @@
     render();
   }
 
-  function defaultMsg() { return 'Drag from a seed to grow a vine.'; }
+  function defaultMsg() { return brussels() ? 'Drag from a free arm to grow a vine.' : 'Drag from a seed to grow a vine.'; }
 
   let msgBad = false;
   function setMsg(text, bad) {
@@ -579,18 +631,23 @@
       renderStroke(); renderSpots();
       return;
     }
-    let best = -1, bd = Infinity;
-    spots.forEach((s, i) => { const d = dist(s, p); if (d < bd) { bd = d; best = i; } });
-    if (bd > START_R) { setMsg(pending ? 'Pick up your vine at the glowing spot, or start a new one on a seed.' : 'Start your vine on a seed.', true); return; }
-    const s = spots[best];
+    const near = nearestPort(p, 0, null), nc = nearestCentre(p, 0);
+    if (!near.port || near.d > START_R) {
+      if (brussels() && nc.d <= START_R + ARM_LEN && lives(spots[nc.i]) <= 0) setMsg('That cross has no free arms.', true);
+      else if (brussels()) setMsg(pending ? 'Pick up your vine at the glowing spot, or start a new one on a free arm.' : 'Start your vine on a free arm.', true);
+      else setMsg(pending ? 'Pick up your vine at the glowing spot, or start a new one on a seed.' : 'Start your vine on a seed.', true);
+      return;
+    }
+    const port = near.port, s = spots[port.spot];
     if (lives(s) <= 0) { setMsg('That seed is full. It already has 3 vines.', true); return; }
     e.preventDefault();
     try { svg.setPointerCapture(e.pointerId); } catch (_) {}
     const dropped = !!pending;
     pending = null;
-    drag = { id: e.pointerId, start: best, pts: [{ x: s.x, y: s.y }], breaks: [], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
+    drag = { id: e.pointerId, start: port.spot, startArm: port.arm, startPt: { x: port.x, y: port.y },
+             pts: [{ x: port.x, y: port.y }], breaks: [], cum: [0], armed: false, invalid: null, sm: { x: p.x, y: p.y } };
     hintSpots = null;
-    setMsg((dropped ? 'The waiting vine was dropped. ' : '') + 'Now reach another seed, or loop back to this one.');
+    setMsg((dropped ? 'The waiting vine was dropped. ' : '') + (brussels() ? 'Now reach another free arm.' : 'Now reach another seed, or loop back to this one.'));
     renderStroke(); renderSpots();
   });
 
@@ -628,7 +685,7 @@
     // Nothing is recorded while the finger is still on the seed body. The vine's first segment
     // then runs from the centre in the direction the finger left, not toward where it landed,
     // so two vines started from the same spot on a seed don't share an overlapping stub.
-    if (drag.pts.length === 1 && dist(q, spots[drag.start]) < SPOT_R) return;
+    if (drag.pts.length === 1 && dist(q, drag.startPt) < (brussels() ? 6 : SPOT_R)) return;
     const last = drag.pts[drag.pts.length - 1];
     const d = dist(q, last);
     if (d < STEP) return;
@@ -650,10 +707,11 @@
     d.pts.push(p);
     d.cum.push(d.cum[d.cum.length - 1] + dist(p, prev));
     if (d.invalid) return;
-    const st = spots[d.start];
-    if (!d.armed && images(p, ARM_R).every(q => dist(q, st) > ARM_R)) d.armed = true;
-    const near = nearestSeed(p, CAPTURE_R, d.armed ? -1 : d.start);
-    if (near.i >= 0 && near.d < CAPTURE_R) tryFinish(near.i, near.img);
+    if (!d.armed && images(p, ARM_R).every(q => dist(q, d.startPt) > ARM_R)) d.armed = true;
+    // The start seed only counts once the stroke has armed. In Brussels Sprouts the start arm
+    // itself never counts, but another free arm of the same cross does.
+    const near = nearestPort(p, CAPTURE_R, pt => pt.spot === d.start && (!d.armed || (brussels() && pt.arm === d.startArm)));
+    if (near.port && near.d < CAPTURE_R) tryFinish(near.port, near.img);
   }
 
   // The stroke has run off the edge of a glued surface. Cut it at the seam, and leave it waiting
@@ -687,7 +745,7 @@
     return CLEAR * Math.min(1, (m - NO_CLEAR_R) / (FULL_CLEAR_R - NO_CLEAR_R));
   }
   function clearanceNeeded(p) {
-    return clearanceAt(nearestSeed(p, FULL_CLEAR_R, -1).d);
+    return clearanceAt(nearestCentre(p, FULL_CLEAR_R).d);
   }
 
   // Does segment a->b cross an existing vine, or this stroke's own earlier segments (the last
@@ -721,12 +779,14 @@
     return null;
   }
 
-  function tryFinish(i, img) {
-    const d = drag, s = spots[i];
-    if (i === d.start) {
-      if (lives(s) < 2) { fail('A loop needs 2 free shoots on its seed.'); return; }
-    } else if (lives(s) <= 0) { fail('Your vine touched a full seed. Go around it.'); return; }
-    const a = d.pts[d.pts.length - 1], b = { x: s.x, y: s.y };
+  function tryFinish(port, img) {
+    const d = drag, i = port.spot, s = spots[i];
+    if (!brussels()) {
+      if (i === d.start) {
+        if (lives(s) < 2) { fail('A loop needs 2 free shoots on its seed.'); return; }
+      } else if (lives(s) <= 0) { fail('Your vine touched a full seed. Go around it.'); return; }
+    }
+    const a = d.pts[d.pts.length - 1], b = { x: port.x, y: port.y };
     const t = unmap(b, img.i, img.j);   // the seed as seen from where the stroke is
     if (outside(t)) {                   // the last bit of vine crosses a seam
       const { S, entry } = seamExit(a, t);
@@ -742,7 +802,7 @@
       if (x) { fail(x); return; }
     }
     d.pts.push(b);
-    commit(i);
+    commit(port);
   }
 
   // Place the new seed near the middle of the vine, at the roomiest spot. Returns -1 when no spot
@@ -765,30 +825,70 @@
         if (Math.abs(cum[j] - cum[k]) < 40 || Math.abs(cum[j + 1] - cum[k]) < 40) continue;
         de = Math.min(de, dSeg(q.x, q.y, P[j].x, P[j].y, P[j + 1].x, P[j + 1].y));
       }
-      const ds = nearestSeed(p, 40, -1).d;
+      const ds = nearestCentre(p, 40).d;
       if (de < SEED_GAP_V || ds < SEED_GAP_S) continue;
+      if (brussels() && !barFits(P, br, cum, k)) continue;
       const score = Math.min(de, ds * 0.6, 40) - Math.abs(t - 0.5) * 20;
       if (score > best) { best = score; bestK = k; }
     }
     return bestK;
   }
 
-  function commit(target) {
-    const d = drag;
+  // The direction of the vine at point k (unit vector), from its neighbours in the same piece.
+  function tangentAt(P, k) {
+    const tx = P[k + 1].x - P[k - 1].x, ty = P[k + 1].y - P[k - 1].y, len = Math.hypot(tx, ty) || 1;
+    return { x: tx / len, y: ty / len };
+  }
+  // Brussels Sprouts: the new cross's bar runs across the vine at P[k]. Both tips need CLEAR from
+  // every other vine and arm, from this vine's far parts, and must stay inside the bed.
+  function barFits(P, br, cum, k) {
+    const t = tangentAt(P, k);
+    for (const sg of [1, -1]) {
+      const q = { x: P[k].x - t.y * ARM_LEN * sg, y: P[k].y + t.x * ARM_LEN * sg };
+      if (flat() ? (q.x < MARGIN || q.y < MARGIN || q.x > B - MARGIN || q.y > B - MARGIN)
+                 : (q.x < SPOT_R || q.x > B - SPOT_R || q.y < SPOT_R || q.y > B - SPOT_R)) return false;
+      if (distToSegs(q, segs, CLEAR) < CLEAR) return false;
+      for (const w of images(q, CLEAR)) for (let j = 0; j < P.length - 1; j++) {
+        if (isBreak(br, j + 1)) continue;
+        if (Math.abs(cum[j] - cum[k]) < 40 || Math.abs(cum[j + 1] - cum[k]) < 40) continue;
+        if (dSeg(w.x, w.y, P[j].x, P[j].y, P[j + 1].x, P[j + 1].y) < CLEAR) return false;
+      }
+    }
+    return true;
+  }
+
+  function commit(port) {
+    const d = drag, target = port.spot;
     const P = d.pts, br = d.breaks;
     const k = pickSplit(P, br);
     if (k < 0) { fail('No room for a new seed on that vine.'); return; }
     drag = null;
-    const ns = { x: P[k].x, y: P[k].y, deg: 2 };
+    let ns;
+    if (brussels()) {
+      // The new cross: two arms along the vine (taken by the vine itself) and a free bar across it.
+      const t = tangentAt(P, k);
+      ns = { x: P[k].x, y: P[k].y, deg: 2, arms: [
+        { dx: t.x * ARM_LEN, dy: t.y * ARM_LEN, used: true, seg: false },
+        { dx: -t.x * ARM_LEN, dy: -t.y * ARM_LEN, used: true, seg: false },
+        { dx: -t.y * ARM_LEN, dy: t.x * ARM_LEN, used: false, seg: true },
+        { dx: t.y * ARM_LEN, dy: -t.x * ARM_LEN, used: false, seg: true },
+      ] };
+      spots[d.start].arms[d.startArm].used = true;
+      spots[target].arms[port.arm].used = true;
+    } else {
+      ns = { x: P[k].x, y: P[k].y, deg: 2 };
+      spots[d.start].deg++;
+      spots[target].deg++;
+    }
     spots.push(ns);
     const ni = spots.length - 1;
     edges.push({ a: d.start, b: ni, pts: P.slice(0, k + 1), breaks: br.filter(i => i <= k), player });
     edges.push({ a: ni, b: target, pts: P.slice(k), breaks: br.filter(i => i > k).map(i => i - k), player });
-    spots[d.start].deg++;
-    spots[target].deg++;
     moveCount++;
     const loop = d.start === target;
-    log.push({ n: moveCount, p: player, text: loop ? 'looped a vine back to one seed' : 'joined two seeds' });
+    log.push({ n: moveCount, p: player, text: brussels()
+      ? (loop ? 'joined two arms of one cross' : 'joined two crosses')
+      : (loop ? 'looped a vine back to one seed' : 'joined two seeds') });
     popIdx = ni;
     growFrom = edges.length - 2;
     showHintBtn = false;
@@ -851,12 +951,19 @@
         }
         rctx.stroke();
       }
+      for (const s of spots) if (s.arms) for (const a of s.arms) if (a.seg) {
+        rctx.beginPath(); rctx.moveTo(s.x, s.y); rctx.lineTo(s.x + a.dx, s.y + a.dy); rctx.stroke();
+      }
     });
   }
-  function seedDiscs(r) {
+  function discsAt(points, r) {
     rctx.beginPath();
-    for (const s of spots) for (const q of images(s, r)) { rctx.moveTo(q.x + r, q.y); rctx.arc(q.x, q.y, r, 0, 2 * Math.PI); }
+    for (const c of points) for (const q of images(c, r)) { rctx.moveTo(q.x + r, q.y); rctx.arc(q.x, q.y, r, 0, 2 * Math.PI); }
   }
+  // Discs around seed centres, where the clearance rule relaxes.
+  function seedDiscs(r) { discsAt(spots, r); }
+  // Discs where a passing vine would be captured: seed centres, or free arm tips.
+  function blockDiscs(r) { discsAt(spots.flatMap((s, i) => ports(s, i)), r); }
   // Near seeds the rule asks for less room, so inside radius r redraw the vines thinner.
   function thinNearSeeds(r, width) {
     rctx.save();
@@ -878,7 +985,7 @@
     strokeVines(2 * CLEAR);
     thinNearSeeds(FULL_CLEAR_R, 2 * clearanceAt(MID_R));
     thinNearSeeds(MID_R, 0.75);
-    seedDiscs(DISC_R); rctx.fill();
+    blockDiscs(DISC_R); rctx.fill();
     if (flat()) {
       rctx.fillRect(0, 0, B, MARGIN); rctx.fillRect(0, B - MARGIN, B, MARGIN);
       rctx.fillRect(0, 0, MARGIN, B); rctx.fillRect(B - MARGIN, 0, MARGIN, B);
@@ -904,25 +1011,38 @@
       }
       nl++;
     }
-    const regionsOf = spots.map(s => {
-      const set = new Set();
-      for (let k = 0; k < 72; k++) {
-        const a = k * Math.PI / 36, cx = Math.cos(a), cy = Math.sin(a);
-        for (let r = DISC_R - 1; r <= RING_R; r += 0.5) {
-          const l = labelAt(s.x + r * cx, s.y + r * cy);
-          if (l >= 0) { set.add(l); break; }
-        }
+    // First free pixel walking out from a point along angle a: the face just outside the disc there.
+    const firstFree = (x, y, a) => {
+      const cx = Math.cos(a), cy = Math.sin(a);
+      for (let r = DISC_R - 1; r <= RING_R; r += 0.5) {
+        const l = labelAt(x + r * cx, y + r * cy);
+        if (l >= 0) return l;
       }
-      return [...set];
-    });
+      return -1;
+    };
     const sum = new Map(), members = new Map();
+    const credit = (labels, L, i) => {
+      for (const l of labels) {
+        sum.set(l, (sum.get(l) || 0) + L);
+        if (!members.has(l)) members.set(l, []);
+        if (!members.get(l).includes(i)) members.get(l).push(i);
+      }
+    };
     spots.forEach((s, i) => {
       const L = lives(s);
       if (L <= 0) return;
-      for (const l of regionsOf[i]) {
-        sum.set(l, (sum.get(l) || 0) + L);
-        if (!members.has(l)) members.set(l, []);
-        members.get(l).push(i);
+      if (s.arms) {
+        // Each free tip sits in one face: look just past its capture disc, in a fan around the arm.
+        for (const a of s.arms) {
+          if (a.used) continue;
+          const dir = Math.atan2(a.dy, a.dx), set = new Set();
+          for (const off of [0, 0.45, -0.45, 0.9, -0.9]) { const l = firstFree(s.x + a.dx, s.y + a.dy, dir + off); if (l >= 0) set.add(l); }
+          credit(set, 1, i);
+        }
+      } else {
+        const set = new Set();
+        for (let k = 0; k < 72; k++) { const l = firstFree(s.x, s.y, k * Math.PI / 36); if (l >= 0) set.add(l); }
+        credit(set, L, i);
       }
     });
     let hint = [];
@@ -933,8 +1053,8 @@
   // ---- End of game ----
   function endGame(w, text) {
     over = true; winner = w; overText = text; drag = null; showHintBtn = false; hintSpots = null;
-    scores[n].games++;
-    scores[n]['p' + w]++;
+    scores[variant][n].games++;
+    scores[variant][n]['p' + w]++;
     setMsg('');
   }
 
@@ -1022,10 +1142,19 @@
       const cls = 'seed' + (helpers && L <= 0 ? ' wilt' : '') + (i === popIdx ? ' pop' : '');
       const anim = i === popIdx && popDelay ? ` style="animation-delay:${popDelay.toFixed(3)}s"` : '';
       let pips = '';
-      if (helpers && L > 0) pips = PIPS[L].map(([dx, dy]) => `<circle class="pip" cx="${s.x + dx}" cy="${s.y + dy}" r="2.8"/>`).join('');
+      if (helpers && L > 0 && !s.arms) pips = PIPS[L].map(([dx, dy]) => `<circle class="pip" cx="${s.x + dx}" cy="${s.y + dy}" r="2.8"/>`).join('');
       let rings = '';
-      if (drag && i === drag.start) rings += `<circle class="ring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 6}" style="stroke:${PCOL[player]}"/>`;
-      if (hintSpots && hintSpots.includes(i)) rings += `<circle class="hintring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 7}"/>`;
+      if (drag && i === drag.start) {
+        rings += s.arms
+          ? `<circle class="ring" cx="${drag.startPt.x}" cy="${drag.startPt.y}" r="10" style="stroke:${PCOL[player]}"/>`
+          : `<circle class="ring" cx="${s.x}" cy="${s.y}" r="${SPOT_R + 6}" style="stroke:${PCOL[player]}"/>`;
+      }
+      if (hintSpots && hintSpots.includes(i)) rings += `<circle class="hintring" cx="${s.x}" cy="${s.y}" r="${(s.arms ? ARM_LEN : SPOT_R) + 7}"/>`;
+      if (s.arms) {
+        const arms = s.arms.filter(a => a.seg).map(a => `<line class="arm" x1="${s.x}" y1="${s.y}" x2="${s.x + a.dx}" y2="${s.y + a.dy}"/>`).join('');
+        const tips = helpers ? s.arms.filter(a => !a.used).map(a => `<circle class="pip" cx="${s.x + a.dx}" cy="${s.y + a.dy}" r="3.4"/>`).join('') : '';
+        return `<g class="${cls} cross"${anim}>${arms}<circle class="seed-body" cx="${s.x}" cy="${s.y}" r="5"/>${tips}</g>${rings}`;
+      }
       return `<g class="${cls}"${anim}><circle class="seed-body" cx="${s.x}" cy="${s.y}" r="${SPOT_R}"/>${pips}</g>${rings}`;
     }).join('');
     popIdx = -1;
@@ -1059,12 +1188,15 @@
       const win = $('win');
       win.hidden = false;
       win.style.color = PCOL[winner];
-      win.innerHTML = `${overText}
+      win.innerHTML = brussels()
+        ? `${overText}
+        <p>The game lasted ${moveCount} moves. Play again with ${n} ${n === 1 ? 'cross' : 'crosses'}. Does the length change? Does the winner?</p>`
+        : `${overText}
         <p>The game lasted ${moveCount} moves. With ${n} seeds it can never go past ${max}. Can you see why?
         Play again with ${n} seeds. Does the same player keep winning?</p>`;
     } else {
       $('turn').innerHTML = `<span class="chip" style="background:${PCOL[player]}"></span>Player ${player}'s turn`;
-      $('count').textContent = `Move ${moveCount + 1} · at most ${max}`;
+      $('count').textContent = brussels() ? `Move ${moveCount + 1}` : `Move ${moveCount + 1} · at most ${max}`;
       $('win').hidden = true;
     }
   }
@@ -1078,6 +1210,21 @@
   }
 
   function renderSettings() {
+    const br = brussels();
+    document.querySelectorAll('[data-game]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.game === variant)));
+    $('title').textContent = br ? 'Brussels Sprouts' : 'Sprouts';
+    $('sub').textContent = br
+      ? 'Join free arms with vines. Every vine grows a new cross. If you can’t join two arms on your turn, you lose.'
+      : 'Grow vines between seeds. Every vine sprouts a new seed. If you can’t grow a vine on your turn, you lose.';
+    $('switch').innerHTML = br
+      ? 'Playing Brussels Sprouts · <a href="#sprouts">Switch to Sprouts</a>'
+      : 'Playing Sprouts · <a href="#brussels">Switch to Brussels Sprouts</a>';
+    $('seedLabel').textContent = br ? 'Starting crosses' : 'Starting seeds';
+    $('helpersNote').textContent = br
+      ? 'Green tips mark the free arms. A cross with no free arms turns grey.'
+      : 'Green dots show how many vines a seed can still take. Full seeds turn grey.';
+    $('scoreHead').textContent = br ? 'Crosses' : 'Seeds';
+    $('howSprouts').hidden = br; $('howBrussels').hidden = !br; $('curious').hidden = br;
     document.querySelectorAll('[data-seeds]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.seeds === n)));
     document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
     document.querySelectorAll('[data-helpers]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.helpers === 'on') === helpers)));
@@ -1100,8 +1247,8 @@
   }
 
   function renderScores() {
-    $('scores').innerHTML = Object.keys(scores).map(k => {
-      const s = scores[k];
+    $('scores').innerHTML = Object.keys(scores[variant]).map(k => {
+      const s = scores[variant][k];
       return `<tr class="${+k === n ? 'current' : ''}"><td>${k}</td><td>${s.games}</td><td>${s.p1}</td><td>${s.p2}</td></tr>`;
     }).join('');
   }
@@ -1120,12 +1267,31 @@
 
   // ---- Wiring ----
   const seedPills = $('seedPills');
-  for (let k = 2; k <= 8; k++) {
-    const b = document.createElement('button');
-    b.className = 'pill'; b.dataset.seeds = k; b.textContent = k;
-    b.addEventListener('click', () => { n = k; newGame(); });
-    seedPills.appendChild(b);
+  function buildSeedPills() {
+    seedPills.innerHTML = '';
+    const [lo, hi] = SEEDS[variant];
+    for (let k = lo; k <= hi; k++) {
+      const b = document.createElement('button');
+      b.className = 'pill'; b.dataset.seeds = k; b.textContent = k;
+      b.addEventListener('click', () => { n = k; newGame(); });
+      seedPills.appendChild(b);
+    }
   }
+  // The game is also in the address (#brussels), so a link can open straight into either one.
+  function setVariant(v) {
+    variant = v in SEEDS ? v : 'sprouts';
+    const [lo, hi] = SEEDS[variant];
+    n = Math.min(hi, Math.max(lo, n));
+    buildSeedPills();
+    const hash = variant === 'sprouts' ? '' : '#' + variant;
+    if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
+    newGame();
+  }
+  document.querySelectorAll('[data-game]').forEach(b => b.addEventListener('click', () => setVariant(b.dataset.game)));
+  window.addEventListener('hashchange', () => {
+    const v = location.hash.replace('#', '') || 'sprouts';
+    if (v !== variant && v in SEEDS) setVariant(v);
+  });
   document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
     mode = b.dataset.mode;
     showHintBtn = false;
@@ -1153,11 +1319,12 @@
   // Small hook for automated testing; harmless in normal play. load() replaces the board with a
   // hand-built position so tests can check analysis and placement without drawing every vine.
   window.__sprouts = {
-    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode, surface,
+    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode, surface, variant, n,
                     pending: pending && { resume: pending.resume, points: pending.pts.length } }),
     load: st => {
       if (st.surface) surface = st.surface;
-      spots = st.spots.map(s => ({ x: s.x, y: s.y, deg: s.deg }));
+      if (st.variant) variant = st.variant;
+      spots = st.spots.map(s => s.arms ? { x: s.x, y: s.y, deg: s.deg || 0, arms: s.arms.map(a => ({ ...a })) } : { x: s.x, y: s.y, deg: s.deg });
       edges = st.edges.map(e => ({ a: e.a, b: e.b, player: e.player || 1, breaks: (e.breaks || []).slice(), pts: e.pts.map(p => ({ x: p.x, y: p.y })) }));
       for (const e of edges) {   // vine ends must share the seed's exact coordinates
         e.pts[0] = { x: spots[e.a].x, y: spots[e.a].y };
@@ -1169,6 +1336,9 @@
     },
   };
 
+  variant = (location.hash.replace('#', '') in SEEDS) ? location.hash.replace('#', '') : 'sprouts';
+  if (brussels()) n = Math.min(SEEDS.brussels[1], Math.max(SEEDS.brussels[0], n));
+  buildSeedPills();
   newGame();
 })();
 </script>
