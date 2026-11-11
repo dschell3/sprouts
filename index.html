@@ -70,6 +70,8 @@
   h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; display: inline-flex; align-items: center; gap: 8px; }
   h1 svg { width: 30px; height: 30px; }
   .sub { margin: 6px auto 0; color: var(--muted); max-width: 560px; text-wrap: balance; }
+  .switch { margin: 6px 0 0; color: var(--muted); font-size: 0.88rem; }
+  .switch a { color: var(--p1); font-weight: 600; }
 
   main {
     display: grid;
@@ -209,9 +211,10 @@
         <path d="M16 17 C 9 17 5 12 5 6 C 12 6 16 10 16 17 Z" fill="var(--p1)"/>
         <path d="M16 14 C 22 14 27 10 27 4 C 20 4 16 8 16 14 Z" fill="var(--pip)" stroke="var(--p1)" stroke-width="1.5"/>
       </svg>
-      Sprouts
+      <span id="title">Sprouts</span>
     </h1>
-    <p class="sub">Grow vines between seeds. Every vine sprouts a new seed. If you can't grow a vine on your turn, you lose.</p>
+    <p class="sub" id="sub">Grow vines between seeds. Every vine sprouts a new seed. If you can't grow a vine on your turn, you lose.</p>
+    <p class="switch" id="switch"></p>
   </header>
 
   <main>
@@ -261,7 +264,14 @@
         <details class="fold" id="settingsFold" open>
         <summary><h2>Settings</h2></summary>
         <div class="row">
-          <p class="row-label">Starting seeds</p>
+          <p class="row-label">Game</p>
+          <div class="pills" role="group" aria-label="Game">
+            <button class="pill" data-game="sprouts">Sprouts</button>
+            <button class="pill" data-game="brussels">Brussels Sprouts</button>
+          </div>
+        </div>
+        <div class="row">
+          <p class="row-label" id="seedLabel">Starting seeds</p>
           <div class="pills" id="seedPills" role="group" aria-label="Starting seeds"></div>
         </div>
         <div class="row">
@@ -278,7 +288,7 @@
             <button class="pill" data-helpers="on">On</button>
             <button class="pill" data-helpers="off">Off</button>
           </div>
-          <p class="note">Green dots show how many vines a seed can still take. Full seeds turn grey.</p>
+          <p class="note" id="helpersNote">Green dots show how many vines a seed can still take. Full seeds turn grey.</p>
         </div>
         <div class="row">
           <p class="row-label">Surface</p>
@@ -304,14 +314,14 @@
         <details class="fold">
         <summary><h2>Scoreboard</h2></summary>
         <table>
-          <thead><tr><th>Seeds</th><th>Games</th><th>P1 wins</th><th>P2 wins</th></tr></thead>
+          <thead><tr><th id="scoreHead">Seeds</th><th>Games</th><th>P1 wins</th><th>P2 wins</th></tr></thead>
           <tbody id="scores"></tbody>
         </table>
         </details>
       </section>
 
       <section class="card">
-        <details>
+        <details id="howSprouts">
           <summary>How to play</summary>
           <ol>
             <li>The garden starts with a few seeds. Player 1 goes first.</li>
@@ -322,6 +332,17 @@
             <li>If you can't grow a vine on your turn, you lose. The last player to move wins.</li>
           </ol>
         </details>
+        <details id="howBrussels" hidden>
+          <summary>How to play</summary>
+          <ol>
+            <li>The garden starts with a few crosses. Each cross has 4 free arms. Player 1 goes first.</li>
+            <li>On your turn, drag a vine from a free arm to another free arm. It can be an arm of the same cross.</li>
+            <li>A new cross grows across the middle of your vine. It has 2 free arms, one on each side.</li>
+            <li>Vines can't cross each other, themselves, or the arms of a cross.</li>
+            <li>Each arm takes one vine.</li>
+            <li>If you can't join two arms on your turn, you lose. The last player to move wins.</li>
+          </ol>
+        </details>
         <details>
           <summary>Auto vs Challenge</summary>
           <ul>
@@ -329,7 +350,7 @@
             <li><strong>Challenge:</strong> the game never tells you it's over. When you think you have no move, tap "I'm stuck". The game checks your claim.</li>
           </ul>
         </details>
-        <details>
+        <details id="curious">
           <summary>For the curious (spoilers)</summary>
           <ul>
             <li>Each seed starts with 3 free shoots. A move uses 2 shoots, and the new seed brings 1. So every move removes exactly 1 shoot from the garden.</li>
@@ -379,15 +400,17 @@
   const stack = new Int32Array(R * R);
 
   // ---- Game state ----
-  let n = 4, mode = 'auto', helpers = true, surface = 'square';
+  let n = 4, mode = 'auto', helpers = true, surface = 'square', variant = 'sprouts';
+  const brussels = () => variant === 'brussels';
+  const SEEDS = { sprouts: [2, 8], brussels: [1, 6] };   // seed-count range per game
   let spots = [], edges = [], segs = [], log = [];
   let moveCount = 0, player = 1, over = false, winner = 0, overText = '';
   let analysis = { movable: true, hint: [] };
   let hintSpots = null, popIdx = -1, drag = null, pending = null, showHintBtn = false, giveUpArmed = 0;
   let growFrom = -1, popDelay = 0;   // edges from this index on animate in; the new seed pops after the first half
   const GROW_SPEED = 900;            // board units per second
-  const scores = {};
-  for (let k = 2; k <= 8; k++) scores[k] = { games: 0, p1: 0, p2: 0 };
+  const scores = { sprouts: {}, brussels: {} };
+  for (const v in SEEDS) for (let k = SEEDS[v][0]; k <= SEEDS[v][1]; k++) scores[v][k] = { games: 0, p1: 0, p2: 0 };
 
   // ---- Geometry helpers ----
   function orient(ax, ay, bx, by, cx, cy) { return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); }
@@ -543,7 +566,7 @@
     render();
   }
 
-  function defaultMsg() { return 'Drag from a seed to grow a vine.'; }
+  function defaultMsg() { return brussels() ? 'Drag from a free arm to grow a vine.' : 'Drag from a seed to grow a vine.'; }
 
   let msgBad = false;
   function setMsg(text, bad) {
@@ -933,8 +956,8 @@
   // ---- End of game ----
   function endGame(w, text) {
     over = true; winner = w; overText = text; drag = null; showHintBtn = false; hintSpots = null;
-    scores[n].games++;
-    scores[n]['p' + w]++;
+    scores[variant][n].games++;
+    scores[variant][n]['p' + w]++;
     setMsg('');
   }
 
@@ -1059,12 +1082,15 @@
       const win = $('win');
       win.hidden = false;
       win.style.color = PCOL[winner];
-      win.innerHTML = `${overText}
+      win.innerHTML = brussels()
+        ? `${overText}
+        <p>The game lasted ${moveCount} moves. Play again with ${n} ${n === 1 ? 'cross' : 'crosses'}. Does the length change? Does the winner?</p>`
+        : `${overText}
         <p>The game lasted ${moveCount} moves. With ${n} seeds it can never go past ${max}. Can you see why?
         Play again with ${n} seeds. Does the same player keep winning?</p>`;
     } else {
       $('turn').innerHTML = `<span class="chip" style="background:${PCOL[player]}"></span>Player ${player}'s turn`;
-      $('count').textContent = `Move ${moveCount + 1} · at most ${max}`;
+      $('count').textContent = brussels() ? `Move ${moveCount + 1}` : `Move ${moveCount + 1} · at most ${max}`;
       $('win').hidden = true;
     }
   }
@@ -1078,6 +1104,21 @@
   }
 
   function renderSettings() {
+    const br = brussels();
+    document.querySelectorAll('[data-game]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.game === variant)));
+    $('title').textContent = br ? 'Brussels Sprouts' : 'Sprouts';
+    $('sub').textContent = br
+      ? 'Join free arms with vines. Every vine grows a new cross. If you can’t join two arms on your turn, you lose.'
+      : 'Grow vines between seeds. Every vine sprouts a new seed. If you can’t grow a vine on your turn, you lose.';
+    $('switch').innerHTML = br
+      ? 'Playing Brussels Sprouts · <a href="#sprouts">Switch to Sprouts</a>'
+      : 'Playing Sprouts · <a href="#brussels">Switch to Brussels Sprouts</a>';
+    $('seedLabel').textContent = br ? 'Starting crosses' : 'Starting seeds';
+    $('helpersNote').textContent = br
+      ? 'Green tips mark the free arms. A cross with no free arms turns grey.'
+      : 'Green dots show how many vines a seed can still take. Full seeds turn grey.';
+    $('scoreHead').textContent = br ? 'Crosses' : 'Seeds';
+    $('howSprouts').hidden = br; $('howBrussels').hidden = !br; $('curious').hidden = br;
     document.querySelectorAll('[data-seeds]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.seeds === n)));
     document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
     document.querySelectorAll('[data-helpers]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.helpers === 'on') === helpers)));
@@ -1100,8 +1141,8 @@
   }
 
   function renderScores() {
-    $('scores').innerHTML = Object.keys(scores).map(k => {
-      const s = scores[k];
+    $('scores').innerHTML = Object.keys(scores[variant]).map(k => {
+      const s = scores[variant][k];
       return `<tr class="${+k === n ? 'current' : ''}"><td>${k}</td><td>${s.games}</td><td>${s.p1}</td><td>${s.p2}</td></tr>`;
     }).join('');
   }
@@ -1120,12 +1161,31 @@
 
   // ---- Wiring ----
   const seedPills = $('seedPills');
-  for (let k = 2; k <= 8; k++) {
-    const b = document.createElement('button');
-    b.className = 'pill'; b.dataset.seeds = k; b.textContent = k;
-    b.addEventListener('click', () => { n = k; newGame(); });
-    seedPills.appendChild(b);
+  function buildSeedPills() {
+    seedPills.innerHTML = '';
+    const [lo, hi] = SEEDS[variant];
+    for (let k = lo; k <= hi; k++) {
+      const b = document.createElement('button');
+      b.className = 'pill'; b.dataset.seeds = k; b.textContent = k;
+      b.addEventListener('click', () => { n = k; newGame(); });
+      seedPills.appendChild(b);
+    }
   }
+  // The game is also in the address (#brussels), so a link can open straight into either one.
+  function setVariant(v) {
+    variant = v in SEEDS ? v : 'sprouts';
+    const [lo, hi] = SEEDS[variant];
+    n = Math.min(hi, Math.max(lo, n));
+    buildSeedPills();
+    const hash = variant === 'sprouts' ? '' : '#' + variant;
+    if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
+    newGame();
+  }
+  document.querySelectorAll('[data-game]').forEach(b => b.addEventListener('click', () => setVariant(b.dataset.game)));
+  window.addEventListener('hashchange', () => {
+    const v = location.hash.replace('#', '') || 'sprouts';
+    if (v !== variant && v in SEEDS) setVariant(v);
+  });
   document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
     mode = b.dataset.mode;
     showHintBtn = false;
@@ -1153,7 +1213,7 @@
   // Small hook for automated testing; harmless in normal play. load() replaces the board with a
   // hand-built position so tests can check analysis and placement without drawing every vine.
   window.__sprouts = {
-    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode, surface,
+    state: () => ({ spots, edges, moveCount, player, over, winner, analysis, mode, surface, variant, n,
                     pending: pending && { resume: pending.resume, points: pending.pts.length } }),
     load: st => {
       if (st.surface) surface = st.surface;
@@ -1169,6 +1229,9 @@
     },
   };
 
+  variant = (location.hash.replace('#', '') in SEEDS) ? location.hash.replace('#', '') : 'sprouts';
+  if (brussels()) n = Math.min(SEEDS.brussels[1], Math.max(SEEDS.brussels[0], n));
+  buildSeedPills();
   newGame();
 })();
 </script>

@@ -37,7 +37,7 @@ class G:
         self.p.mouse.up()
     def st(self):
         return self.p.evaluate("""() => { const s = window.__sprouts.state();
-          return {moves: s.moveCount, player: s.player, over: s.over, winner: s.winner, surface: s.surface,
+          return {moves: s.moveCount, player: s.player, over: s.over, winner: s.winner, surface: s.surface, variant: s.variant, n: s.n,
                   movable: s.analysis.movable, hint: s.analysis.hint, regions: s.analysis.regions,
                   spots: s.spots.map(p => [Math.round(p.x), Math.round(p.y), p.deg])}; }""")
     def msg(self):
@@ -303,6 +303,24 @@ with sync_playwright() as pw:
     s = g.st()
     check(pend() is None and s["moves"] == 2, f"starting a new vine drops the waiting one: pending={pend()} moves={s['moves']} msg={g.msg()}")
     page.click("[data-surface='square']")
+
+    # ================= Brussels Sprouts =================
+    # --- Switching games: pill, header link and address ---
+    page.click("[data-game='brussels']")
+    s = g.st()
+    pills = page.evaluate("[...document.querySelectorAll('[data-seeds]')].map(b => +b.dataset.seeds)")
+    check(s["variant"] == "brussels" and pills == [1, 2, 3, 4, 5, 6] and page.evaluate("location.hash") == "#brussels"
+          and page.inner_text("#title") == "Brussels Sprouts", f"Brussels via pill: {s['variant']} pills={pills} hash={page.evaluate('location.hash')}")
+    page.click("#switch a")
+    page.wait_for_function("document.getElementById('title').textContent === 'Sprouts'")
+    s = g.st()
+    check(s["variant"] == "sprouts" and page.evaluate("location.hash") in ("", "#sprouts") and page.inner_text("#title") == "Sprouts",
+          f"back to Sprouts via the header link: {s['variant']} hash={page.evaluate('location.hash')}")
+    page.goto(URL + "#brussels")
+    s = g.st()
+    check(s["variant"] == "brussels" and 1 <= s["n"] <= 6, f"opening the address with #brussels starts Brussels: {s['variant']} n={s['n']}")
+    page.goto(URL)
+    g = G(page)
 
     # --- 8 seeds renders ---
     page.click("[data-seeds='8']")
