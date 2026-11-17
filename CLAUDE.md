@@ -21,7 +21,7 @@ Keep the game as **one self-contained `index.html`**: no build step, no framewor
 - Vines may not cross themselves or other vines, and may not pass through a seed.
 - A seed holds at most 3 vine ends. A loop uses 2 of them.
 - Normal play: the player who cannot move loses, so the last player to move wins. **No misère mode.**
-- Facts shown in the UI: a game lasts at most 3n − 1 moves (true on every surface) and, on the flat square, at least 2n moves. The "n mod 6" winner conjecture is marked as a flat-square result.
+- Facts shown in the UI (win box and "For the curious" only; the move counter just counts): a game lasts at most 3n − 1 moves (true on every surface) and, on the flat square, at least 2n moves. The "n mod 6" winner conjecture is marked as a flat-square result.
 
 ## Brussels Sprouts (variant)
 
