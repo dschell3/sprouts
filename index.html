@@ -1196,7 +1196,7 @@
         Play again with ${n} seeds. Does the same player keep winning?</p>`;
     } else {
       $('turn').innerHTML = `<span class="chip" style="background:${PCOL[player]}"></span>Player ${player}'s turn`;
-      $('count').textContent = brussels() ? `Move ${moveCount + 1}` : `Move ${moveCount + 1} · at most ${max}`;
+      $('count').textContent = `Move ${moveCount + 1}`;
       $('win').hidden = true;
     }
   }
